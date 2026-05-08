@@ -10,7 +10,7 @@ const SEV = {
   Info:     { bg: 'rgba(99,179,237,0.06)',  border: 'rgba(99,179,237,0.2)',  color: '#63b3ed', badgeBg: 'rgba(99,179,237,0.1)' },
 };
 
-function buildCompliancePrompt(ramsJson, profile, procedures) {
+export function buildCompliancePrompt(ramsJson, profile, procedures) {
   const guidance = filterGuidanceForTask(ramsJson.taskType, 10);
   const lines = [
     'You are a HSQE compliance auditor. Review the RAMS document below against the company management system. Identify specific conflicts, gaps, and non-compliances with reference to the procedures and requirements provided.',
@@ -51,7 +51,7 @@ Respond ONLY with valid JSON:
   return lines.join('\n');
 }
 
-function buildFixPrompt(ramsJson, selectedIssues) {
+export function buildFixPrompt(ramsJson, selectedIssues) {
   const issueList = selectedIssues
     .map((iss, i) => `${i + 1}. [${iss.severity}] Section: ${iss.section}\n   Issue: ${iss.issue}\n   Required fix: ${iss.recommendation}`)
     .join('\n\n');
@@ -67,7 +67,7 @@ ${issueList}
 Update the RAMS document to fully address ALL issues listed above. Make targeted, specific improvements to the flagged sections. Keep all other content intact. Return ONLY the complete updated RAMS JSON with the exact same structure — no preamble, no markdown.`;
 }
 
-export default function CompliancePanel({ ramsData, profile, procedures, onUpdateRams }) {
+export default function CompliancePanel({ ramsData, profile, procedures, onUpdateRams, onAudit }) {
   const [state, setState]           = useState('idle');
   const [result, setResult]         = useState(null);
   const [errMsg, setErrMsg]         = useState('');
@@ -89,6 +89,7 @@ export default function CompliancePanel({ ramsData, profile, procedures, onUpdat
       const data = await callOpenAIChat({ model: 'gpt-4o', max_tokens: 2000, messages: [{ role: 'user', content: prompt }] });
       const text = data.choices?.[0]?.message?.content || '';
       setResult(parseJsonResponse(text, 'Compliance check returned invalid data. Please try again.'));
+      onAudit?.('compliance_checked', { taskType: ramsData.taskType });
       setState('done');
     } catch (err) {
       setErrMsg(err.message || 'Compliance check failed');

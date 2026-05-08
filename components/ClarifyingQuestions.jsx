@@ -4,8 +4,32 @@ import { callOpenAIChat, parseJsonResponse } from '../lib/openaiClient';
 
 export function buildAnswersContext(answers) {
   if (!answers || Object.keys(answers).length === 0) return '';
-  const lines = Object.entries(answers).map(([, v]) => `• ${v.question}: ${v.answer}`);
-  return `\nCONFIRMED SITE DETAILS:\n${lines.join('\n')}\n`;
+  const groups = {
+    scopeOfWorks: [],
+    siteObservations: [],
+    hazards: [],
+  };
+
+  Object.values(answers).forEach(value => {
+    const text = `${value.question || ''} ${value.answer || ''}`.toLowerCase();
+    const line = `• ${value.question}: ${value.answer}`;
+    if (/(duration|shift|day|week|hours|crew|operatives|scale|length|area|quantity|programme|phase)/.test(text)) {
+      groups.scopeOfWorks.push(line);
+    } else if (/(plant|equipment|machine|tool|excavator|dumper|saw|breaker|crane|vehicle|material)/.test(text)) {
+      groups.hazards.push(line);
+    } else {
+      groups.siteObservations.push(line);
+    }
+  });
+
+  return `\nCONFIRMED SITE DETAILS BY RAMS SECTION:
+scopeOfWorks:
+${groups.scopeOfWorks.join('\n') || '• None'}
+siteObservations:
+${groups.siteObservations.join('\n') || '• None'}
+hazards:
+${groups.hazards.join('\n') || '• None'}
+\n`;
 }
 
 async function fetchQuestions({ taskType, location, additionalInfo }) {

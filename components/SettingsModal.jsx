@@ -5,6 +5,7 @@ import { DEFAULT_PROFILE } from '../lib/companyProfile';
 import { extractTextFromFile } from '../lib/procedureLibrary';
 import { downloadSampleTemplate } from '../lib/sampleTemplate';
 import { callOpenAIChat, parseJsonResponse } from '../lib/openaiClient';
+import OrgSettings from './OrgSettings';
 
 const CATEGORIES = [
   { value: '', label: 'All tasks' },
@@ -75,6 +76,8 @@ function PersonnelRow({ label, nv, pv, onN, onP }) {
 function ProfileTab({ profile, setProfile, userId, onSaved }) {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved]   = useState(false);
+  const [logoErr, setLogoErr] = useState('');
+  const [logoUploading, setLogoUploading] = useState(false);
   const up = (k, v) => setProfile(p => ({ ...p, [k]: v }));
   const inp = (k, ph) => ({ style: S.input, value: profile[k] || '', onChange: e => up(k, e.target.value), placeholder: ph, onFocus: focus, onBlur: blur });
   const ta  = (k, ph, minH = 80) => ({ style: { ...S.textarea, minHeight: minH }, value: profile[k] || '', onChange: e => up(k, e.target.value), placeholder: ph, onFocus: focus, onBlur: blur });
@@ -88,6 +91,32 @@ function ProfileTab({ profile, setProfile, userId, onSaved }) {
     setTimeout(() => setSaved(false), 2000);
   };
 
+  const uploadLogo = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setLogoErr('Logo must be an image file.');
+      return;
+    }
+    setLogoUploading(true);
+    setLogoErr('');
+    const ext = file.name.split('.').pop() || 'png';
+    const path = `${userId}/${Date.now()}-logo.${ext}`;
+    const { error: uploadError } = await supabase.storage.from('logos').upload(path, file, { upsert: true });
+    if (uploadError) {
+      setLogoErr(uploadError.message);
+      setLogoUploading(false);
+      return;
+    }
+    const { data } = supabase.storage.from('logos').getPublicUrl(path);
+    const nextProfile = { ...profile, logoUrl: data.publicUrl };
+    setProfile(nextProfile);
+    await supabase.from('company_profiles').upsert({ user_id: userId, data: nextProfile, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
+    onSaved(nextProfile);
+    setLogoUploading(false);
+    event.target.value = '';
+  };
+
   return (
     <div>
       <div style={{ background: 'rgba(0,229,160,0.05)', border: '1px solid rgba(0,229,160,0.15)', borderRadius: 8, padding: '12px 16px', marginBottom: 24, fontSize: 13, color: '#888', lineHeight: 1.6 }}>
@@ -99,6 +128,12 @@ function ProfileTab({ profile, setProfile, userId, onSaved }) {
           <F label="Company Name"><input {...inp('companyName', 'e.g. Acme Construction Ltd')} /></F>
           <F label="Company Address"><input {...inp('companyAddress', 'e.g. 12 Business Park, Birmingham B1 1AA')} /></F>
         </div>
+        <F label="Company Logo" help="Used on PDF cover pages.">
+          <input type="file" accept="image/*" onChange={uploadLogo} style={S.input} />
+          {logoUploading && <div style={S.help}>Uploading logo…</div>}
+          {profile.logoUrl && <img src={profile.logoUrl} alt="Company logo" style={{ maxWidth: 160, maxHeight: 60, marginTop: 10, display: 'block' }} />}
+          {logoErr && <div style={S.errBox}>{logoErr}</div>}
+        </F>
       </Sec>
 
       <Sec title="Site Personnel">
@@ -147,7 +182,10 @@ function ProceduresTab({ procedures, setProcedures, userId }) {
   const [extractErr, setExtractErr] = useState('');
   const [inputMode, setInputMode] = useState('upload');
   const [saving, setSaving]       = useState(false);
+  const [bulkImport, setBulkImport] = useState({ active: false, current: 0, total: 0, success: 0, failures: [] });
+  const [bulkSummary, setBulkSummary] = useState('');
   const fileRef = useRef();
+  const bulkRef = useRef();
 
   const upF = (k, v) => setForm(p => ({ ...p, [k]: v }));
 
@@ -155,8 +193,8 @@ function ProceduresTab({ procedures, setProcedures, userId }) {
     const file = e.target.files[0];
     if (!file) return;
     const ext = file.name.split('.').pop().toLowerCase();
-    if (!['txt', 'pdf', 'docx'].includes(ext)) {
-      setExtractErr('Only .txt, .pdf, or .docx files are supported.');
+    if (!['txt', 'md', 'pdf', 'docx'].includes(ext)) {
+      setExtractErr('Only .txt, .md, .pdf, or .docx files are supported.');
       e.target.value = '';
       return;
     }
@@ -172,6 +210,49 @@ function ProceduresTab({ procedures, setProcedures, userId }) {
       setForm(p => ({ ...p, text: text.slice(0, 50000), title: p.title || file.name.replace(/\.[^.]+$/, '') }));
     } catch (err) { setExtractErr(err.message); }
     finally { setExtracting(false); e.target.value = ''; }
+  };
+
+  const importFiles = async (files) => {
+    const list = Array.from(files || []).filter(Boolean);
+    if (!list.length) return;
+    setBulkSummary('');
+    setBulkImport({ active: true, current: 0, total: list.length, success: 0, failures: [] });
+    const imported = [];
+    const failures = [];
+
+    for (let i = 0; i < list.length; i++) {
+      const file = list[i];
+      setBulkImport(prev => ({ ...prev, current: i + 1 }));
+      const ext = file.name.split('.').pop().toLowerCase();
+      if (!['txt', 'md', 'pdf', 'docx'].includes(ext)) {
+        failures.push(`${file.name}: unsupported file type`);
+        setBulkImport(prev => ({ ...prev, failures: [...failures] }));
+        continue;
+      }
+      try {
+        const text = await extractTextFromFile(file);
+        const row = {
+          user_id: userId,
+          title: file.name.replace(/\.[^.]+$/, ''),
+          code: '',
+          category: '',
+          text: text.slice(0, 50000),
+          char_count: Math.min(text.length, 50000),
+          file_name: file.name,
+        };
+        const { data, error } = await supabase.from('procedures').insert(row).select().single();
+        if (error) throw error;
+        imported.push(data);
+        setBulkImport(prev => ({ ...prev, success: imported.length }));
+      } catch (err) {
+        failures.push(`${file.name}: ${err.message}`);
+        setBulkImport(prev => ({ ...prev, failures: [...failures] }));
+      }
+    }
+
+    if (imported.length) setProcedures(prev => [...prev, ...imported]);
+    setBulkImport({ active: false, current: 0, total: list.length, success: imported.length, failures });
+    setBulkSummary(`${imported.length} procedure${imported.length === 1 ? '' : 's'} imported successfully`);
   };
 
   const addProc = async () => {
@@ -202,6 +283,25 @@ function ProceduresTab({ procedures, setProcedures, userId }) {
       <p style={{ fontSize: 13, color: '#888', lineHeight: 1.6, marginBottom: 20 }}>
         Upload your company procedures. Relevant ones are matched to task type and injected into the AI prompt — output will comply with and reference them by document code.
       </p>
+
+      <div
+        style={{ ...S.uploadZone, marginBottom: 18, ...(bulkImport.active ? { borderColor: '#00e5a0' } : {}) }}
+        onDragOver={e => e.preventDefault()}
+        onDrop={e => { e.preventDefault(); importFiles(e.dataTransfer.files); }}
+        onClick={() => !bulkImport.active && bulkRef.current?.click()}
+      >
+        <div style={{ fontSize: 13, color: bulkImport.active ? '#00e5a0' : '#c0c0b8' }}>
+          {bulkImport.active ? `Importing ${bulkImport.current} of ${bulkImport.total}…` : 'Drop procedure files here or click to bulk import'}
+        </div>
+        <div style={{ fontSize: 12, color: '#555', marginTop: 4 }}>.pdf, .docx, .txt, .md · files are processed sequentially</div>
+        <input ref={bulkRef} type="file" accept=".txt,.md,.pdf,.docx" multiple onChange={e => { importFiles(e.target.files); e.target.value = ''; }} style={{ display: 'none' }} />
+      </div>
+      {bulkSummary && <div style={{ ...S.card, color: '#00e5a0' }}>{bulkSummary}</div>}
+      {bulkImport.failures.length > 0 && (
+        <div style={S.errBox}>
+          {bulkImport.failures.map(item => <div key={item}>{item}</div>)}
+        </div>
+      )}
 
       {procedures.length === 0 && !adding && (
         <div style={{ textAlign: 'center', padding: '32px 0', color: '#555', fontSize: 13, border: '1px dashed #1e2128', borderRadius: 10, marginBottom: 16 }}>
@@ -250,7 +350,7 @@ function ProceduresTab({ procedures, setProcedures, userId }) {
               <div style={{ ...S.uploadZone, ...(extracting ? { borderColor: '#00e5a0' } : {}) }} onClick={() => !extracting && fileRef.current?.click()}>
                 {extracting ? <span style={{ fontSize: 13, color: '#00e5a0' }}>Extracting text…</span>
                   : form.text ? <span style={{ fontSize: 13, color: '#00e5a0' }}>✓ {(form.text.length / 1000).toFixed(1)}k chars extracted — click to replace</span>
-                  : <span style={{ fontSize: 13, color: '#555' }}>Click to upload .txt, .pdf, or .docx</span>}
+                  : <span style={{ fontSize: 13, color: '#555' }}>Click to upload .txt, .md, .pdf, or .docx</span>}
                 <input ref={fileRef} type="file" accept=".txt,.md,.pdf,.docx" onChange={handleFile} style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%', height: '100%' }} />
               </div>
               {extractErr && <div style={S.errBox}>{extractErr}</div>}
@@ -514,13 +614,14 @@ function TemplateTab({ userId, activeTemplate, setActiveTemplate }) {
 }
 
 // ── Main Modal ───────────────────────────────────────────────
-export default function SettingsModal({ onClose, user, profile, setProfile, procedures, setProcedures, activeTemplate, setActiveTemplate }) {
+export default function SettingsModal({ onClose, user, profile, setProfile, procedures, setProcedures, activeTemplate, setActiveTemplate, org, orgRole, onOrgChange }) {
   const [tab, setTab] = useState('profile');
 
   const tabs = [
     { key: 'profile',    label: 'Company Profile' },
     { key: 'procedures', label: `Procedure Library${procedures.length ? ` (${procedures.length})` : ''}` },
     { key: 'template',   label: `RAMS Template${activeTemplate ? ' ✓' : ''}` },
+    { key: 'team',       label: 'Team' },
   ];
 
   return (
@@ -542,6 +643,7 @@ export default function SettingsModal({ onClose, user, profile, setProfile, proc
           {tab === 'profile'    && <ProfileTab    profile={profile} setProfile={setProfile} userId={user.id} onSaved={setProfile} />}
           {tab === 'procedures' && <ProceduresTab procedures={procedures} setProcedures={setProcedures} userId={user.id} />}
           {tab === 'template'   && <TemplateTab   userId={user.id} activeTemplate={activeTemplate} setActiveTemplate={setActiveTemplate} />}
+          {tab === 'team'       && <OrgSettings user={user} org={org} orgRole={orgRole} onOrgChange={onOrgChange} />}
         </div>
       </div>
     </div>

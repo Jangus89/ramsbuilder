@@ -12,6 +12,7 @@ beforeEach(() => {
 afterEach(() => {
   jest.restoreAllMocks();
   delete process.env.OPENAI_API_KEY;
+  jest.dontMock('../../../../../lib/supabase');
 });
 
 async function loadRoute() {
@@ -69,6 +70,84 @@ describe('POST /api/openai/chat', () => {
         }),
       })
     );
+    expect(JSON.parse(global.fetch.mock.calls[0][1].body)).toEqual({ model: 'gpt-4o', messages: [] });
+  });
+
+  it('returns 429 when rate limit exceeded', async () => {
+    process.env.OPENAI_API_KEY = 'sk-test';
+    await loadRoute();
+    global.fetch.mockResolvedValue({
+      status: 200,
+      json: async () => ({ choices: [] }),
+    });
+
+    let res;
+    for (let i = 0; i < 21; i++) {
+      res = await POST(makeRequest({ model: 'gpt-4o', messages: [] }));
+    }
+    expect(res.status).toBe(429);
+  });
+
+  it('builds SafeFlow RAMS context on the server from Supabase data', async () => {
+    process.env.OPENAI_API_KEY = 'sk-test';
+
+    const profileQuery = {
+      select: jest.fn().mockReturnThis(),
+      eq: jest.fn().mockReturnThis(),
+      single: jest.fn().mockResolvedValue({ data: { data: { companyName: 'Acme Civils' } } }),
+    };
+    const proceduresQuery = {
+      select: jest.fn().mockReturnThis(),
+      eq: jest.fn().mockReturnThis(),
+      order: jest.fn().mockResolvedValue({ data: [{ title: 'Permit to Dig', text: 'Use permit to dig.' }] }),
+    };
+    const supabaseClient = {
+      auth: {
+        getUser: jest.fn().mockResolvedValue({ data: { user: { id: 'user-1' } } }),
+      },
+      from: jest.fn(table => table === 'company_profiles' ? profileQuery : proceduresQuery),
+    };
+
+    jest.doMock('../../../../../lib/supabase', () => ({
+      getServerSupabase: jest.fn(() => supabaseClient),
+      isSupabaseConfigured: true,
+      supabase: {},
+    }));
+
+    await loadRoute();
+    global.fetch.mockResolvedValueOnce({
+      status: 200,
+      json: async () => ({ choices: [{ message: { content: '{}' } }] }),
+    });
+
+    const res = await POST(makeRequest({
+      model: 'gpt-4o',
+      max_tokens: 8000,
+      temperature: 0.2,
+      safeFlowContext: {
+        accessToken: 'sb-token',
+        task: 'Excavation / Groundworks',
+        taskType: 'Excavation / Groundworks',
+        customTask: '',
+        location: 'Bristol',
+        additionalInfo: '',
+        hasPhotos: false,
+        photos: [],
+        answers: {},
+      },
+    }));
+
+    expect(res.status).toBe(200);
+    expect(supabaseClient.auth.getUser).toHaveBeenCalledWith('sb-token');
+    expect(supabaseClient.from).toHaveBeenCalledWith('company_profiles');
+    expect(supabaseClient.from).toHaveBeenCalledWith('procedures');
+
+    const [, fetchOptions] = global.fetch.mock.calls[0];
+    const openAIBody = JSON.parse(fetchOptions.body);
+    const prompt = openAIBody.messages[1].content[0].text;
+    expect(openAIBody.messages[0].role).toBe('system');
+    expect(prompt).toContain('Acme Civils');
+    expect(prompt).toContain('Permit to Dig');
   });
 
   it('returns 502 on network failure', async () => {
