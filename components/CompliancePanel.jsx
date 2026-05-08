@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { filterRelevantProcedures } from '../lib/procedureLibrary';
 import { filterGuidanceForTask } from '../lib/hseGuidance';
+import { callOpenAIChat, parseJsonResponse } from '../lib/openaiClient';
 
 const SEV = {
   Critical: { bg: 'rgba(239,68,68,0.06)', border: 'rgba(239,68,68,0.2)', color: '#ef4444', badgeBg: 'rgba(239,68,68,0.1)' },
@@ -66,7 +67,7 @@ ${issueList}
 Update the RAMS document to fully address ALL issues listed above. Make targeted, specific improvements to the flagged sections. Keep all other content intact. Return ONLY the complete updated RAMS JSON with the exact same structure — no preamble, no markdown.`;
 }
 
-export default function CompliancePanel({ ramsData, profile, procedures, apiKey, onUpdateRams }) {
+export default function CompliancePanel({ ramsData, profile, procedures, onUpdateRams }) {
   const [state, setState]           = useState('idle');
   const [result, setResult]         = useState(null);
   const [errMsg, setErrMsg]         = useState('');
@@ -85,16 +86,9 @@ export default function CompliancePanel({ ramsData, profile, procedures, apiKey,
     try {
       const relevant = filterRelevantProcedures(procedures, ramsData.taskType);
       const prompt = buildCompliancePrompt(ramsData, profile, relevant);
-      const resp = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-        body: JSON.stringify({ model: 'gpt-4o', max_tokens: 2000, messages: [{ role: 'user', content: prompt }] }),
-      });
-      const data = await resp.json();
-      if (data.error) throw new Error(data.error.message);
+      const data = await callOpenAIChat({ model: 'gpt-4o', max_tokens: 2000, messages: [{ role: 'user', content: prompt }] });
       const text = data.choices?.[0]?.message?.content || '';
-      const clean = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-      setResult(JSON.parse(clean));
+      setResult(parseJsonResponse(text, 'Compliance check returned invalid data. Please try again.'));
       setState('done');
     } catch (err) {
       setErrMsg(err.message || 'Compliance check failed');
@@ -117,16 +111,9 @@ export default function CompliancePanel({ ramsData, profile, procedures, apiKey,
     setFixSuccess(false);
     try {
       const prompt = buildFixPrompt(ramsData, issuesToFix);
-      const resp = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-        body: JSON.stringify({ model: 'gpt-4o', max_tokens: 4000, messages: [{ role: 'user', content: prompt }] }),
-      });
-      const data = await resp.json();
-      if (data.error) throw new Error(data.error.message);
+      const data = await callOpenAIChat({ model: 'gpt-4o', max_tokens: 4000, messages: [{ role: 'user', content: prompt }] });
       const text = data.choices?.[0]?.message?.content || '';
-      const clean = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-      const updated = JSON.parse(clean);
+      const updated = parseJsonResponse(text, 'Failed to parse updated RAMS. Please try again.');
       onUpdateRams(updated);
       setSelected(new Set());
       setResult(null);

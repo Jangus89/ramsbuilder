@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
+import { callOpenAIChat, parseJsonResponse } from '../lib/openaiClient';
 
 export function buildAnswersContext(answers) {
   if (!answers || Object.keys(answers).length === 0) return '';
@@ -7,7 +8,7 @@ export function buildAnswersContext(answers) {
   return `\nCONFIRMED SITE DETAILS:\n${lines.join('\n')}\n`;
 }
 
-async function fetchQuestions({ taskType, location, additionalInfo, apiKey }) {
+async function fetchQuestions({ taskType, location, additionalInfo }) {
   const context = [
     taskType        && `Task type: ${taskType}`,
     location        && `Site location: ${location}`,
@@ -37,35 +38,28 @@ Rules:
 - Use UK construction / HSQE terminology
 - Tailor specifically to the task and location provided — do not ask generic questions that apply to every job`;
 
-  const resp = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-    body: JSON.stringify({
-      model: 'gpt-4o',
-      max_tokens: 600,
-      messages: [{ role: 'user', content: prompt }],
-    }),
+  const data = await callOpenAIChat({
+    model: 'gpt-4o',
+    max_tokens: 600,
+    messages: [{ role: 'user', content: prompt }],
   });
-  const data = await resp.json();
-  if (data.error) throw new Error(data.error.message);
   const raw = data.choices?.[0]?.message?.content || '';
-  const clean = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-  return JSON.parse(clean).questions;
+  return parseJsonResponse(raw, 'Could not generate clarifying questions. Please try again.').questions;
 }
 
-export default function ClarifyingQuestions({ taskType, location, additionalInfo, apiKey, onSubmit, onBack }) {
+export default function ClarifyingQuestions({ taskType, location, additionalInfo, onSubmit, onBack }) {
   const [questions, setQuestions] = useState([]);
-  const [loadState, setLoadState] = useState('loading'); // loading | ready | error
+  const [loadState, setLoadState] = useState('loading');
   const [loadErr, setLoadErr]     = useState('');
   const [answers, setAnswers]     = useState({});
 
   useEffect(() => {
     setLoadState('loading');
     setAnswers({});
-    fetchQuestions({ taskType, location, additionalInfo, apiKey })
+    fetchQuestions({ taskType, location, additionalInfo })
       .then(qs => { setQuestions(qs); setLoadState('ready'); })
       .catch(err => { setLoadErr(err.message || 'Could not generate questions'); setLoadState('error'); });
-  }, [taskType, location, additionalInfo, apiKey]);
+  }, [taskType, location, additionalInfo]);
 
   const allAnswered = questions.length > 0 && questions.every(q => answers[q.id]);
 
@@ -118,7 +112,7 @@ export default function ClarifyingQuestions({ taskType, location, additionalInfo
             <button
               onClick={() => {
                 setLoadState('loading');
-                fetchQuestions({ taskType, location, additionalInfo, apiKey })
+                fetchQuestions({ taskType, location, additionalInfo })
                   .then(qs => { setQuestions(qs); setLoadState('ready'); })
                   .catch(err => { setLoadErr(err.message); setLoadState('error'); });
               }}

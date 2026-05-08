@@ -4,9 +4,11 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { DEFAULT_PROFILE, injectProfileIntoPrompt } from './lib/companyProfile';
 import { injectProceduresIntoPrompt } from './lib/procedureLibrary';
 import { filterGuidanceForTask } from './lib/hseGuidance';
+import { callOpenAIChat, parseJsonResponse } from './lib/openaiClient';
 import { supabase } from './lib/supabase';
 import SettingsModal from './components/SettingsModal';
 import CompliancePanel from './components/CompliancePanel';
+import ErrorBoundary from './components/ErrorBoundary';
 import AuthScreen from './components/AuthScreen';
 import ClarifyingQuestions, { buildAnswersContext } from './components/ClarifyingQuestions';
 
@@ -652,9 +654,17 @@ const styles = `
   }
 
   @media (max-width: 600px) {
+    .app { padding: 24px 16px 60px; }
+    .hero h1 { font-size: 28px; }
+    .photos-grid { grid-template-columns: repeat(2, 1fr); }
+    .export-buttons { flex-direction: column; width: 100%; }
+    .export-btn { width: 100%; justify-content: center; }
     .sign-off-grid { grid-template-columns: 1fr; }
     .rams-header { flex-direction: column; }
     .hazard-table { font-size: 12px; }
+    .hazard-table th:nth-child(2), .hazard-table td:nth-child(2) { display: none; }
+    .ppe-grid { gap: 6px; }
+    .ppe-item { font-size: 12px; padding: 5px 10px; }
   }
 `;
 
@@ -662,11 +672,21 @@ function PhotoUpload({ photos, onAdd, onRemove }) {
   const [dragOver, setDragOver] = useState(false);
   const inputRef = useRef();
 
+  const [fileError, setFileError] = useState('');
+
   const handleFiles = useCallback((files) => {
+    setFileError('');
     const remaining = 4 - photos.length;
     const toAdd = Array.from(files).slice(0, remaining);
     toAdd.forEach(file => {
-      if (!file.type.startsWith('image/')) return;
+      if (!file.type.startsWith('image/')) {
+        setFileError('Only image files are allowed.');
+        return;
+      }
+      if (file.size > 5 * 1024 * 1024) {
+        setFileError('Each image must be under 5 MB.');
+        return;
+      }
       const reader = new FileReader();
       reader.onload = (e) => onAdd({ file, url: e.target.result, name: file.name });
       reader.readAsDataURL(file);
@@ -695,6 +715,7 @@ function PhotoUpload({ photos, onAdd, onRemove }) {
           <input ref={inputRef} type="file" accept="image/*" multiple onChange={(e) => handleFiles(e.target.files)} />
         </div>
       )}
+      {fileError && <div className="error-box" style={{ marginTop: 12 }}>⚠ {fileError}</div>}
       {photos.length > 0 && (
         <div className="photos-grid" style={{ marginTop: photos.length < 4 ? '16px' : '0' }}>
           {photos.map((p, i) => (
@@ -1059,8 +1080,6 @@ Respond ONLY with a valid JSON object in exactly this structure, no preamble, no
 Produce at least 6 hazards. Use the 5×5 risk matrix: Likelihood (1=Rare, 2=Unlikely, 3=Possible, 4=Likely, 5=Almost Certain) × Severity (1=Negligible, 2=Minor, 3=Moderate, 4=Major, 5=Catastrophic) = Risk Rating (1-6=Low, 7-14=Medium, 15-25=High). Be specific and technical — this is a legally significant document. Reference relevant UK regulations (HASAWA 1974, MHSWR 1999, CDM 2015, RIDDOR, COSHH 2002, Environmental Protection Act 1990, etc.). PPE minimum 6 items. trainingRequirements must list each individual certification, competency card, or course required — one item per entry. For references: select 4-8 HSE documents from the list provided that are most directly applicable to this specific task — use exact titles and URLs from the list.`;
   };
 
-  const OPENAI_API_KEY = process.env.NEXT_PUBLIC_OPENAI_API_KEY;
-
   const generateRAMS = async (answers = {}) => {
     const task = taskType === 'Other (describe below)' ? customTask : taskType;
     if (!task || photos.length === 0) return;
@@ -1075,49 +1094,25 @@ Produce at least 6 hazards. Use the 5×5 risk matrix: Likelihood (1=Rare, 2=Unli
     }, 1800);
 
     try {
-      // Build OpenAI vision message content
       const imageContents = photos.map(p => ({
         type: 'image_url',
-        image_url: {
-          url: p.url, // base64 data URL — OpenAI accepts this directly
-          detail: 'high'
-        }
+        image_url: { url: p.url, detail: 'high' }
       }));
 
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${OPENAI_API_KEY}`
-        },
-        body: JSON.stringify({
-          model: 'gpt-4o',
-          max_tokens: 4000,
-          messages: [{
-            role: 'user',
-            content: [
-              ...imageContents,
-              { type: 'text', text: buildPrompt(answers) }
-            ]
-          }]
-        })
+      const data = await callOpenAIChat({
+        model: 'gpt-4o',
+        max_tokens: 4000,
+        messages: [{
+          role: 'user',
+          content: [
+            ...imageContents,
+            { type: 'text', text: buildPrompt(answers) }
+          ]
+        }]
       });
 
-      const data = await response.json();
-
-      if (data.error) {
-        throw new Error(data.error.message || 'OpenAI API error');
-      }
-
       const text = data.choices?.[0]?.message?.content || '';
-
-      let parsed;
-      try {
-        const clean = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-        parsed = JSON.parse(clean);
-      } catch {
-        throw new Error('Could not parse the generated RAMS. Please try again.');
-      }
+      const parsed = parseJsonResponse(text, 'Could not parse the generated RAMS. Please try again.');
 
       clearInterval(stepInterval);
       setLoadingStep(3);
@@ -1427,14 +1422,15 @@ Produce at least 6 hazards. Use the 5×5 risk matrix: Likelihood (1=Rare, 2=Unli
             )}
 
             {showClarifying && (
-              <ClarifyingQuestions
-                taskType={taskType === 'Other (describe below)' ? customTask || null : taskType}
-                location={location}
-                additionalInfo={additionalInfo}
-                apiKey={OPENAI_API_KEY}
-                onSubmit={(answers) => generateRAMS(answers)}
-                onBack={() => setShowClarifying(false)}
-              />
+              <ErrorBoundary>
+                <ClarifyingQuestions
+                  taskType={taskType === 'Other (describe below)' ? customTask || null : taskType}
+                  location={location}
+                  additionalInfo={additionalInfo}
+                  onSubmit={(answers) => generateRAMS(answers)}
+                  onBack={() => setShowClarifying(false)}
+                />
+              </ErrorBoundary>
             )}
 
             {error && <div className="error-box">⚠ {error}</div>}
@@ -1445,21 +1441,24 @@ Produce at least 6 hazards. Use the 5×5 risk matrix: Likelihood (1=Rare, 2=Unli
 
         {ramsData && !loading && (
           <>
-            <RamsDocument
-              data={ramsData}
-              onReset={() => { setRamsData(null); setPhotos([]); setTaskType(''); setCustomTask(''); setLocation(''); setAdditionalInfo(''); setShowClarifying(false); }}
-              onExportPDF={handleExportPDF}
-              onExportWord={activeTemplate ? handleExportWord : null}
-              onExportDrive={handleExportDrive}
-              onExportOneDrive={handleExportOneDrive}
-            />
-            <CompliancePanel
-              ramsData={ramsData}
-              profile={profile}
-              procedures={procedures}
-              apiKey={OPENAI_API_KEY}
-              onUpdateRams={setRamsData}
-            />
+            <ErrorBoundary>
+              <RamsDocument
+                data={ramsData}
+                onReset={() => { setRamsData(null); setPhotos([]); setTaskType(''); setCustomTask(''); setLocation(''); setAdditionalInfo(''); setShowClarifying(false); }}
+                onExportPDF={handleExportPDF}
+                onExportWord={activeTemplate ? handleExportWord : null}
+                onExportDrive={handleExportDrive}
+                onExportOneDrive={handleExportOneDrive}
+              />
+            </ErrorBoundary>
+            <ErrorBoundary>
+              <CompliancePanel
+                ramsData={ramsData}
+                profile={profile}
+                procedures={procedures}
+                onUpdateRams={setRamsData}
+              />
+            </ErrorBoundary>
           </>
         )}
       </div>
