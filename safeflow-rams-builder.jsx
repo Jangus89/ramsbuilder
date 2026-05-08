@@ -1,3 +1,5 @@
+'use client';
+
 import { useState, useRef, useCallback } from "react";
 
 const TASK_TYPES = [
@@ -896,8 +898,7 @@ Respond ONLY with a valid JSON object in exactly this structure, no preamble, no
 Produce at least 6 hazards. Be specific and technical — this is a legally significant document. Reference relevant UK regulations where appropriate (HASAWA 1974, MHSWR 1999, CDM 2015, RIDDOR, etc.). PPE list should include at minimum 6 items appropriate to the task.`;
   };
 
-  // ⚠️ REPLACE WITH YOUR OPENAI API KEY — do not share this file publicly once added
-  const OPENAI_API_KEY = 'YOUR_OPENAI_API_KEY_HERE';
+  const OPENAI_API_KEY = process.env.NEXT_PUBLIC_OPENAI_API_KEY;
 
   const generateRAMS = async () => {
     const task = taskType === 'Other (describe below)' ? customTask : taskType;
