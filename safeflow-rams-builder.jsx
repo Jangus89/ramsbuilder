@@ -1,3 +1,5 @@
+'use client';
+
 import { useState, useRef, useCallback } from "react";
 
 const TASK_TYPES = [
