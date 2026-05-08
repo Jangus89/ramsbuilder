@@ -544,6 +544,13 @@ const styles = `
   .risk-medium { background: rgba(245,158,11,0.1); color: #f59e0b; border: 1px solid rgba(245,158,11,0.2); }
   .risk-low { background: rgba(0,229,160,0.1); color: #00e5a0; border: 1px solid rgba(0,229,160,0.2); }
 
+  .risk-score {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    color: #555;
+    margin-top: 4px;
+  }
+
   .ppe-grid {
     display: flex;
     flex-wrap: wrap;
@@ -747,6 +754,7 @@ function RamsDocument({ data, onReset, onExportPDF, onExportDrive, onExportOneDr
               <span>Date: {today}</span>
               <span>Version: 1.0</span>
               {data.location && <span>Location: {data.location}</span>}
+              {data.reviewDate && <span>Review by: {data.reviewDate}</span>}
             </div>
           </div>
           <div className="rams-status">DRAFT — REVIEW REQUIRED</div>
@@ -771,9 +779,9 @@ function RamsDocument({ data, onReset, onExportPDF, onExportDrive, onExportOneDr
                 <tr>
                   <th>Hazard</th>
                   <th>Those at Risk</th>
-                  <th>Initial Risk</th>
+                  <th>Initial Risk (L×S)</th>
                   <th>Control Measures</th>
-                  <th>Residual Risk</th>
+                  <th>Residual Risk (L×S)</th>
                 </tr>
               </thead>
               <tbody>
@@ -781,9 +789,15 @@ function RamsDocument({ data, onReset, onExportPDF, onExportDrive, onExportOneDr
                   <tr key={i}>
                     <td>{h.hazard}</td>
                     <td>{h.thoseAtRisk}</td>
-                    <td><span className={`risk-badge risk-${h.initialRisk.toLowerCase()}`}>{h.initialRisk}</span></td>
+                    <td>
+                      <span className={`risk-badge risk-${h.initialRisk.toLowerCase()}`}>{h.initialRisk}</span>
+                      {h.initialLikelihood && <div className="risk-score">{h.initialLikelihood}×{h.initialSeverity}={h.initialLikelihood * h.initialSeverity}</div>}
+                    </td>
                     <td>{h.controls}</td>
-                    <td><span className={`risk-badge risk-${h.residualRisk.toLowerCase()}`}>{h.residualRisk}</span></td>
+                    <td>
+                      <span className={`risk-badge risk-${h.residualRisk.toLowerCase()}`}>{h.residualRisk}</span>
+                      {h.residualLikelihood && <div className="risk-score">{h.residualLikelihood}×{h.residualSeverity}={h.residualLikelihood * h.residualSeverity}</div>}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -813,6 +827,45 @@ function RamsDocument({ data, onReset, onExportPDF, onExportDrive, onExportOneDr
             <div className="rams-section-title">Competencies Required</div>
             <p className="rams-text">{data.competencies}</p>
           </div>
+
+          {data.trainingRequirements && data.trainingRequirements.length > 0 && (
+            <div className="rams-section">
+              <div className="rams-section-title">Training Requirements</div>
+              <div className="ppe-grid">
+                {data.trainingRequirements.map((item, i) => (
+                  <div key={i} className="ppe-item">{item}</div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {data.welfareArrangements && (
+            <div className="rams-section">
+              <div className="rams-section-title">Welfare Arrangements</div>
+              <p className="rams-text" style={{ whiteSpace: 'pre-line' }}>{data.welfareArrangements}</p>
+            </div>
+          )}
+
+          {data.environmentalControls && (
+            <div className="rams-section">
+              <div className="rams-section-title">Environmental Controls</div>
+              <p className="rams-text" style={{ whiteSpace: 'pre-line' }}>{data.environmentalControls}</p>
+            </div>
+          )}
+
+          {data.coshhAssessment && (
+            <div className="rams-section">
+              <div className="rams-section-title">COSHH Assessment</div>
+              <p className="rams-text" style={{ whiteSpace: 'pre-line' }}>{data.coshhAssessment}</p>
+            </div>
+          )}
+
+          {data.refuellingProcedure && (
+            <div className="rams-section">
+              <div className="rams-section-title">Refuelling Procedure</div>
+              <p className="rams-text" style={{ whiteSpace: 'pre-line' }}>{data.refuellingProcedure}</p>
+            </div>
+          )}
 
           <div className="rams-section">
             <div className="rams-section-title">Sign-off</div>
@@ -884,18 +937,28 @@ Respond ONLY with a valid JSON object in exactly this structure, no preamble, no
     {
       "hazard": "Hazard name",
       "thoseAtRisk": "Who is at risk",
+      "initialLikelihood": 4,
+      "initialSeverity": 4,
       "initialRisk": "High|Medium|Low",
       "controls": "Specific control measures to reduce this risk",
+      "residualLikelihood": 2,
+      "residualSeverity": 3,
       "residualRisk": "High|Medium|Low"
     }
   ],
   "methodStatement": "Step-by-step method statement as a numbered sequence. Each step on a new line starting with the step number. Minimum 8 steps covering: pre-task checks, site setup, task execution sequence, quality checks, and demobilisation.",
   "ppe": ["PPE item 1", "PPE item 2", "PPE item 3"],
-  "emergencyArrangements": "Clear emergency arrangements covering: nearest A&E hospital, emergency services contact (999), site emergency contact, first aid provision, nearest first aider, emergency assembly point, procedure if worker is injured or incident occurs",
-  "competencies": "Required certifications, qualifications, training, and experience for operatives undertaking this work under UK legislation and industry standards"
+  "welfareArrangements": "Welfare facilities available on site under CDM 2015 Regulation 13: toilets, washing facilities with hot/cold water and soap, rest area, drinking water supply, changing facilities if required, and facility for warming food. Include responsibilities for maintaining welfare standards throughout the works.",
+  "environmentalControls": "Environmental controls under Environmental Protection Act 1990 and site-specific requirements: spill containment measures, noise and vibration management, dust suppression, waste segregation and disposal routes, fuel and oil storage requirements, protection of watercourses and drainage, and any required environmental monitoring.",
+  "coshhAssessment": "COSHH assessment under COSHH Regulations 2002: list each hazardous substance used or potentially encountered (fuels, lubricants, dust, chemicals, exhaust fumes), route of exposure, health effects, and control measures. If no COSHH hazards are identified, state explicitly.",
+  "refuellingProcedure": "Step-by-step refuelling procedure for plant and equipment on site. Cover: approved fuel storage location, minimum separation distances, spill kit location and use, no-smoking and no-ignition-source zone, earthing requirements where applicable, correct PPE for refuelling, prohibition on refuelling with engine running, disposal of contaminated absorbent materials, and emergency procedure in event of fuel spill.",
+  "trainingRequirements": ["Training/certification requirement 1", "Training/certification requirement 2"],
+  "emergencyArrangements": "Clear emergency arrangements: nearest A&E hospital with full name and address based on the site location provided, emergency services (999), site emergency contact name and number, first aid provision and location of first aid kit, name of nearest first aider on site, emergency assembly point, RIDDOR reportable incident procedure, and actions to take if a worker is injured.",
+  "competencies": "Required certifications, qualifications, training, and experience for operatives undertaking this work under UK legislation and industry standards",
+  "reviewDate": "This document should be reviewed within 12 months of issue, or immediately if scope of works changes, an incident occurs, or new hazards are identified"
 }
 
-Produce at least 6 hazards. Be specific and technical — this is a legally significant document. Reference relevant UK regulations where appropriate (HASAWA 1974, MHSWR 1999, CDM 2015, RIDDOR, etc.). PPE list should include at minimum 6 items appropriate to the task.`;
+Produce at least 6 hazards. Use the 5×5 risk matrix: Likelihood (1=Rare, 2=Unlikely, 3=Possible, 4=Likely, 5=Almost Certain) × Severity (1=Negligible, 2=Minor, 3=Moderate, 4=Major, 5=Catastrophic) = Risk Rating (1-6=Low, 7-14=Medium, 15-25=High). Be specific and technical — this is a legally significant document. Reference relevant UK regulations (HASAWA 1974, MHSWR 1999, CDM 2015, RIDDOR, COSHH 2002, Environmental Protection Act 1990, etc.). PPE minimum 6 items. trainingRequirements must list each individual certification, competency card, or course required — one item per entry.`;
   };
 
   const OPENAI_API_KEY = process.env.NEXT_PUBLIC_OPENAI_API_KEY;
@@ -1002,6 +1065,7 @@ Produce at least 6 hazards. Be specific and technical — this is a legally sign
         <span>Date: ${new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' })}</span>
         <span>Location: ${ramsData.location}</span>
         <span>Ref: SF-${Date.now().toString().slice(-6)}</span>
+        ${ramsData.reviewDate ? `<span>Review by: ${ramsData.reviewDate}</span>` : ''}
       </div>
       <div class="status">⚠ DRAFT — REVIEW AND SIGN-OFF REQUIRED BEFORE USE</div>
 
@@ -1018,14 +1082,14 @@ Produce at least 6 hazards. Be specific and technical — this is a legally sign
       <div class="section">
         <div class="section-title">Hazard Register & Risk Assessment</div>
         <table>
-          <thead><tr><th>Hazard</th><th>Those at Risk</th><th>Initial Risk</th><th>Controls</th><th>Residual Risk</th></tr></thead>
+          <thead><tr><th>Hazard</th><th>Those at Risk</th><th>Initial Risk (L×S)</th><th>Controls</th><th>Residual Risk (L×S)</th></tr></thead>
           <tbody>
             ${ramsData.hazards.map(h => `<tr>
               <td>${h.hazard}</td>
               <td>${h.thoseAtRisk}</td>
-              <td><span class="risk-${h.initialRisk.toLowerCase()}">${h.initialRisk}</span></td>
+              <td><span class="risk-${h.initialRisk.toLowerCase()}">${h.initialRisk}</span>${h.initialLikelihood ? `<br><span style="font-size:10px;color:#666">${h.initialLikelihood}×${h.initialSeverity}=${h.initialLikelihood * h.initialSeverity}</span>` : ''}</td>
               <td>${h.controls}</td>
-              <td><span class="risk-${h.residualRisk.toLowerCase()}">${h.residualRisk}</span></td>
+              <td><span class="risk-${h.residualRisk.toLowerCase()}">${h.residualRisk}</span>${h.residualLikelihood ? `<br><span style="font-size:10px;color:#666">${h.residualLikelihood}×${h.residualSeverity}=${h.residualLikelihood * h.residualSeverity}</span>` : ''}</td>
             </tr>`).join('')}
           </tbody>
         </table>
@@ -1052,6 +1116,38 @@ Produce at least 6 hazards. Be specific and technical — this is a legally sign
         <div class="section-title">Competencies Required</div>
         <p>${ramsData.competencies}</p>
       </div>
+
+      ${ramsData.trainingRequirements && ramsData.trainingRequirements.length ? `
+      <div class="section">
+        <div class="section-title">Training Requirements</div>
+        <div class="ppe-grid">
+          ${ramsData.trainingRequirements.map(item => `<div class="ppe-item">✓ ${item}</div>`).join('')}
+        </div>
+      </div>` : ''}
+
+      ${ramsData.welfareArrangements ? `
+      <div class="section">
+        <div class="section-title">Welfare Arrangements</div>
+        <pre>${ramsData.welfareArrangements}</pre>
+      </div>` : ''}
+
+      ${ramsData.environmentalControls ? `
+      <div class="section">
+        <div class="section-title">Environmental Controls</div>
+        <pre>${ramsData.environmentalControls}</pre>
+      </div>` : ''}
+
+      ${ramsData.coshhAssessment ? `
+      <div class="section">
+        <div class="section-title">COSHH Assessment</div>
+        <pre>${ramsData.coshhAssessment}</pre>
+      </div>` : ''}
+
+      ${ramsData.refuellingProcedure ? `
+      <div class="section">
+        <div class="section-title">Refuelling Procedure</div>
+        <pre>${ramsData.refuellingProcedure}</pre>
+      </div>` : ''}
 
       <div class="section">
         <div class="section-title">Sign-off</div>
