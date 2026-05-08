@@ -1,6 +1,11 @@
 'use client';
 
 import { useState, useRef, useCallback } from "react";
+import { useLocalStorage } from './lib/useLocalStorage';
+import { DEFAULT_PROFILE, injectProfileIntoPrompt } from './lib/companyProfile';
+import { injectProceduresIntoPrompt } from './lib/procedureLibrary';
+import SettingsModal from './components/SettingsModal';
+import CompliancePanel from './components/CompliancePanel';
 
 const TASK_TYPES = [
   "Excavation / Groundworks",
@@ -907,6 +912,9 @@ export default function SafeFlowRAMS() {
   const [loadingStep, setLoadingStep] = useState(0);
   const [ramsData, setRamsData] = useState(null);
   const [error, setError] = useState('');
+  const [showSettings, setShowSettings] = useState(false);
+  const [profile] = useLocalStorage('sf_company_profile', DEFAULT_PROFILE);
+  const [procedures] = useLocalStorage('sf_procedures', []);
 
   const addPhoto = useCallback((photo) => {
     setPhotos(prev => [...prev, photo]);
@@ -923,6 +931,8 @@ export default function SafeFlowRAMS() {
 Task Type: ${task}
 ${location ? `Site Location: ${location}` : ''}
 ${additionalInfo ? `Additional Information: ${additionalInfo}` : ''}
+${injectProfileIntoPrompt(profile)}
+${injectProceduresIntoPrompt(procedures, task)}
 
 Analyse the site photos carefully and identify all visible hazards, site conditions, environmental factors, and anything relevant to safe working.
 
@@ -1194,7 +1204,21 @@ Produce at least 6 hazards. Use the 5×5 risk matrix: Likelihood (1=Rare, 2=Unli
               <div className="logo-sub">RAMS Builder</div>
             </div>
           </div>
-          <div className="badge">PROTOTYPE</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div className="badge">PROTOTYPE</div>
+            <button
+              onClick={() => setShowSettings(true)}
+              title="Company Settings"
+              style={{ background: 'none', border: '1.5px solid #2a2d35', borderRadius: 8, color: '#555', cursor: 'pointer', padding: '6px 10px', display: 'flex', alignItems: 'center', transition: 'all 0.15s' }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = '#555'; e.currentTarget.style.color = '#888'; }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = '#2a2d35'; e.currentTarget.style.color = '#555'; }}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="3"/>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+              </svg>
+            </button>
+          </div>
         </div>
 
         {!ramsData && !loading && (
@@ -1266,15 +1290,24 @@ Produce at least 6 hazards. Use the 5×5 risk matrix: Likelihood (1=Rare, 2=Unli
         {loading && <LoadingState step={loadingStep} />}
 
         {ramsData && !loading && (
-          <RamsDocument
-            data={ramsData}
-            onReset={() => { setRamsData(null); setPhotos([]); setTaskType(''); setCustomTask(''); setLocation(''); setAdditionalInfo(''); }}
-            onExportPDF={handleExportPDF}
-            onExportDrive={handleExportDrive}
-            onExportOneDrive={handleExportOneDrive}
-          />
+          <>
+            <RamsDocument
+              data={ramsData}
+              onReset={() => { setRamsData(null); setPhotos([]); setTaskType(''); setCustomTask(''); setLocation(''); setAdditionalInfo(''); }}
+              onExportPDF={handleExportPDF}
+              onExportDrive={handleExportDrive}
+              onExportOneDrive={handleExportOneDrive}
+            />
+            <CompliancePanel
+              ramsData={ramsData}
+              profile={profile}
+              procedures={procedures}
+              apiKey={OPENAI_API_KEY}
+            />
+          </>
         )}
       </div>
+      {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
     </>
   );
 }
