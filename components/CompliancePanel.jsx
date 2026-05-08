@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { filterRelevantProcedures } from '../lib/procedureLibrary';
+import { filterGuidanceForTask } from '../lib/hseGuidance';
 
 const SEV = {
   Critical: { bg: 'rgba(239,68,68,0.06)', border: 'rgba(239,68,68,0.2)', color: '#ef4444', badgeBg: 'rgba(239,68,68,0.1)' },
@@ -9,20 +10,25 @@ const SEV = {
 };
 
 function buildCompliancePrompt(ramsJson, profile, procedures) {
+  const guidance = filterGuidanceForTask(ramsJson.taskType, 10);
   const lines = [
     'You are a HSQE compliance auditor. Review the RAMS document below against the company management system. Identify specific conflicts, gaps, and non-compliances with reference to the procedures and requirements provided.',
   ];
-  if (profile.companyName)        lines.push(`\nCOMPANY: ${profile.companyName}`);
+  if (profile.companyName)          lines.push(`\nCOMPANY: ${profile.companyName}`);
   if (profile.riskMatrixDefinition) lines.push(`RISK MATRIX: ${profile.riskMatrixDefinition}`);
-  if (profile.mandatoryControls)  lines.push(`MANDATORY CONTROLS (must all be present):\n${profile.mandatoryControls}`);
-  if (profile.ptwTriggers)        lines.push(`PERMIT TO WORK TRIGGERS:\n${profile.ptwTriggers}`);
-  if (profile.additionalGuidance) lines.push(`ADDITIONAL GUIDANCE:\n${profile.additionalGuidance}`);
+  if (profile.mandatoryControls)    lines.push(`MANDATORY CONTROLS (must all be present):\n${profile.mandatoryControls}`);
+  if (profile.ptwTriggers)          lines.push(`PERMIT TO WORK TRIGGERS:\n${profile.ptwTriggers}`);
+  if (profile.additionalGuidance)   lines.push(`ADDITIONAL GUIDANCE:\n${profile.additionalGuidance}`);
   if (procedures.length > 0) {
     lines.push('\nAPPLICABLE PROCEDURES:');
     procedures.forEach(p => {
       const text = p.text.length > 3000 ? p.text.slice(0, 3000) + '\n[truncated]' : p.text;
       lines.push(`\n[${p.code || 'PROC'}] ${p.title}:\n${text}`);
     });
+  }
+  if (guidance.length > 0) {
+    lines.push('\nRELEVANT HSE GUIDANCE (use for hseRef in issues):');
+    guidance.forEach(g => lines.push(`- ${g.title}: ${g.url}`));
   }
   lines.push(`\nRAMS TO REVIEW:\n${JSON.stringify(ramsJson, null, 2)}`);
   lines.push(`
@@ -31,7 +37,13 @@ Respond ONLY with valid JSON:
   "score": 0-100,
   "summary": "One sentence overall verdict on compliance",
   "issues": [
-    { "severity": "Critical|Warning|Info", "section": "section name in RAMS", "issue": "specific description of the conflict or gap", "recommendation": "precise action to resolve it" }
+    {
+      "severity": "Critical|Warning|Info",
+      "section": "section name in RAMS",
+      "issue": "specific description of the conflict or gap",
+      "recommendation": "precise action to resolve it",
+      "hseRef": { "title": "most relevant HSE guidance title from the list above, or null", "url": "exact URL from the list, or null" }
+    }
   ],
   "compliantAreas": ["list of areas that comply well with the procedures and requirements"]
 }`);
@@ -263,6 +275,24 @@ export default function CompliancePanel({ ramsData, profile, procedures, apiKey,
                             <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: '#555', textTransform: 'uppercase', letterSpacing: '0.06em', marginRight: 6 }}>Fix →</span>
                             {issue.recommendation}
                           </div>
+                          {issue.hseRef?.url && (
+                            <a
+                              href={issue.hseRef.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={e => e.stopPropagation()}
+                              style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginTop: 8, fontSize: 11, color: '#555', textDecoration: 'none', fontFamily: "'DM Mono', monospace", letterSpacing: '0.03em', transition: 'color 0.15s' }}
+                              onMouseEnter={e => { e.currentTarget.style.color = '#00e5a0'; }}
+                              onMouseLeave={e => { e.currentTarget.style.color = '#555'; }}
+                            >
+                              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                                <polyline points="15 3 21 3 21 9"/>
+                                <line x1="10" y1="14" x2="21" y2="3"/>
+                              </svg>
+                              HSE: {issue.hseRef.title}
+                            </a>
+                          )}
                         </div>
                       </div>
                     </div>

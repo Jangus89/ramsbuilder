@@ -3,6 +3,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { DEFAULT_PROFILE, injectProfileIntoPrompt } from './lib/companyProfile';
 import { injectProceduresIntoPrompt } from './lib/procedureLibrary';
+import { filterGuidanceForTask } from './lib/hseGuidance';
 import { supabase } from './lib/supabase';
 import SettingsModal from './components/SettingsModal';
 import CompliancePanel from './components/CompliancePanel';
@@ -911,6 +912,38 @@ function RamsDocument({ data, onReset, onExportPDF, onExportWord, onExportDrive,
             </div>
           </div>
 
+          {data.references && data.references.length > 0 && (
+            <div className="rams-section">
+              <div className="rams-section-title">HSE References</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {data.references.map((ref, i) => (
+                  <a
+                    key={i}
+                    href={ref.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 10,
+                      background: '#1e2128', border: '1px solid #2a2d35',
+                      borderRadius: 7, padding: '9px 14px',
+                      color: '#c0c0b8', fontSize: 13, textDecoration: 'none',
+                      transition: 'all 0.15s',
+                    }}
+                    onMouseEnter={e => { e.currentTarget.style.borderColor = '#00e5a0'; e.currentTarget.style.color = '#00e5a0'; }}
+                    onMouseLeave={e => { e.currentTarget.style.borderColor = '#2a2d35'; e.currentTarget.style.color = '#c0c0b8'; }}
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, opacity: 0.5 }}>
+                      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                      <polyline points="15 3 21 3 21 9"/>
+                      <line x1="10" y1="14" x2="21" y2="3"/>
+                    </svg>
+                    {ref.title}
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
+
         </div>
       </div>
 
@@ -974,6 +1007,10 @@ export default function SafeFlowRAMS() {
 
   const buildPrompt = (answers) => {
     const task = taskType === 'Other (describe below)' ? customTask : taskType;
+    const guidance = filterGuidanceForTask(task, 14);
+    const guidanceBlock = guidance.length
+      ? `\nRELEVANT HSE GUIDANCE (select the most applicable for the references field):\n${guidance.map(g => `- ${g.title}: ${g.url}`).join('\n')}\n`
+      : '';
     return `You are an expert HSQE Manager with 15+ years of experience producing Risk Assessment and Method Statements (RAMS) for UK field contractors. You must produce a comprehensive, compliant RAMS document based on the site photos provided and the task description below.
 
 Task Type: ${task}
@@ -981,7 +1018,7 @@ ${location ? `Site Location: ${location}` : ''}
 ${additionalInfo ? `Additional Information: ${additionalInfo}` : ''}
 ${buildAnswersContext(answers)}${injectProfileIntoPrompt(profile)}
 ${injectProceduresIntoPrompt(procedures, task)}
-
+${guidanceBlock}
 Analyse the site photos carefully and identify all visible hazards, site conditions, environmental factors, and anything relevant to safe working.
 
 Respond ONLY with a valid JSON object in exactly this structure, no preamble, no markdown:
@@ -1013,10 +1050,13 @@ Respond ONLY with a valid JSON object in exactly this structure, no preamble, no
   "trainingRequirements": ["Training/certification requirement 1", "Training/certification requirement 2"],
   "emergencyArrangements": "Clear emergency arrangements: nearest A&E hospital with full name and address based on the site location provided, emergency services (999), site emergency contact name and number, first aid provision and location of first aid kit, name of nearest first aider on site, emergency assembly point, RIDDOR reportable incident procedure, and actions to take if a worker is injured.",
   "competencies": "Required certifications, qualifications, training, and experience for operatives undertaking this work under UK legislation and industry standards",
-  "reviewDate": "This document should be reviewed within 12 months of issue, or immediately if scope of works changes, an incident occurs, or new hazards are identified"
+  "reviewDate": "This document should be reviewed within 12 months of issue, or immediately if scope of works changes, an incident occurs, or new hazards are identified",
+  "references": [
+    { "title": "Exact title from the HSE Guidance list above", "url": "https://exact-url-from-list" }
+  ]
 }
 
-Produce at least 6 hazards. Use the 5×5 risk matrix: Likelihood (1=Rare, 2=Unlikely, 3=Possible, 4=Likely, 5=Almost Certain) × Severity (1=Negligible, 2=Minor, 3=Moderate, 4=Major, 5=Catastrophic) = Risk Rating (1-6=Low, 7-14=Medium, 15-25=High). Be specific and technical — this is a legally significant document. Reference relevant UK regulations (HASAWA 1974, MHSWR 1999, CDM 2015, RIDDOR, COSHH 2002, Environmental Protection Act 1990, etc.). PPE minimum 6 items. trainingRequirements must list each individual certification, competency card, or course required — one item per entry.`;
+Produce at least 6 hazards. Use the 5×5 risk matrix: Likelihood (1=Rare, 2=Unlikely, 3=Possible, 4=Likely, 5=Almost Certain) × Severity (1=Negligible, 2=Minor, 3=Moderate, 4=Major, 5=Catastrophic) = Risk Rating (1-6=Low, 7-14=Medium, 15-25=High). Be specific and technical — this is a legally significant document. Reference relevant UK regulations (HASAWA 1974, MHSWR 1999, CDM 2015, RIDDOR, COSHH 2002, Environmental Protection Act 1990, etc.). PPE minimum 6 items. trainingRequirements must list each individual certification, competency card, or course required — one item per entry. For references: select 4-8 HSE documents from the list provided that are most directly applicable to this specific task — use exact titles and URLs from the list.`;
   };
 
   const OPENAI_API_KEY = process.env.NEXT_PUBLIC_OPENAI_API_KEY;
