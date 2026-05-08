@@ -1,6 +1,14 @@
 'use client';
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
+import { DEFAULT_PROFILE, injectProfileIntoPrompt } from './lib/companyProfile';
+import { injectProceduresIntoPrompt } from './lib/procedureLibrary';
+import { filterGuidanceForTask } from './lib/hseGuidance';
+import { supabase } from './lib/supabase';
+import SettingsModal from './components/SettingsModal';
+import CompliancePanel from './components/CompliancePanel';
+import AuthScreen from './components/AuthScreen';
+import ClarifyingQuestions, { buildAnswersContext } from './components/ClarifyingQuestions';
 
 const TASK_TYPES = [
   "Excavation / Groundworks",
@@ -387,6 +395,17 @@ const styles = `
     color: #00e5a0;
   }
 
+  .export-btn.word {
+    background: transparent;
+    border-color: #2a2d35;
+    color: #c0c0b8;
+  }
+
+  .export-btn.word:hover {
+    border-color: #2b579a;
+    color: #4472c4;
+  }
+
   .export-btn.drive {
     background: transparent;
     border-color: #2a2d35;
@@ -543,6 +562,13 @@ const styles = `
   .risk-high { background: rgba(239,68,68,0.1); color: #ef4444; border: 1px solid rgba(239,68,68,0.2); }
   .risk-medium { background: rgba(245,158,11,0.1); color: #f59e0b; border: 1px solid rgba(245,158,11,0.2); }
   .risk-low { background: rgba(0,229,160,0.1); color: #00e5a0; border: 1px solid rgba(0,229,160,0.2); }
+
+  .risk-score {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    color: #555;
+    margin-top: 4px;
+  }
 
   .ppe-grid {
     display: flex;
@@ -705,7 +731,7 @@ function LoadingState({ step }) {
   );
 }
 
-function RamsDocument({ data, onReset, onExportPDF, onExportDrive, onExportOneDrive }) {
+function RamsDocument({ data, onReset, onExportPDF, onExportWord, onExportDrive, onExportOneDrive }) {
   const today = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' });
   const refNum = `SF-${Date.now().toString().slice(-6)}`;
 
@@ -723,6 +749,16 @@ function RamsDocument({ data, onReset, onExportPDF, onExportDrive, onExportOneDr
             </svg>
             Download PDF
           </button>
+          {onExportWord && (
+            <button className="export-btn word" onClick={onExportWord}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/>
+                <path d="M9 13l2 4 2-4"/>
+              </svg>
+              Download Word
+            </button>
+          )}
           <button className="export-btn drive" onClick={onExportDrive}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
@@ -747,6 +783,7 @@ function RamsDocument({ data, onReset, onExportPDF, onExportDrive, onExportOneDr
               <span>Date: {today}</span>
               <span>Version: 1.0</span>
               {data.location && <span>Location: {data.location}</span>}
+              {data.reviewDate && <span>Review by: {data.reviewDate}</span>}
             </div>
           </div>
           <div className="rams-status">DRAFT — REVIEW REQUIRED</div>
@@ -771,9 +808,9 @@ function RamsDocument({ data, onReset, onExportPDF, onExportDrive, onExportOneDr
                 <tr>
                   <th>Hazard</th>
                   <th>Those at Risk</th>
-                  <th>Initial Risk</th>
+                  <th>Initial Risk (L×S)</th>
                   <th>Control Measures</th>
-                  <th>Residual Risk</th>
+                  <th>Residual Risk (L×S)</th>
                 </tr>
               </thead>
               <tbody>
@@ -781,9 +818,15 @@ function RamsDocument({ data, onReset, onExportPDF, onExportDrive, onExportOneDr
                   <tr key={i}>
                     <td>{h.hazard}</td>
                     <td>{h.thoseAtRisk}</td>
-                    <td><span className={`risk-badge risk-${h.initialRisk.toLowerCase()}`}>{h.initialRisk}</span></td>
+                    <td>
+                      <span className={`risk-badge risk-${h.initialRisk.toLowerCase()}`}>{h.initialRisk}</span>
+                      {h.initialLikelihood && <div className="risk-score">{h.initialLikelihood}×{h.initialSeverity}={h.initialLikelihood * h.initialSeverity}</div>}
+                    </td>
                     <td>{h.controls}</td>
-                    <td><span className={`risk-badge risk-${h.residualRisk.toLowerCase()}`}>{h.residualRisk}</span></td>
+                    <td>
+                      <span className={`risk-badge risk-${h.residualRisk.toLowerCase()}`}>{h.residualRisk}</span>
+                      {h.residualLikelihood && <div className="risk-score">{h.residualLikelihood}×{h.residualSeverity}={h.residualLikelihood * h.residualSeverity}</div>}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -814,6 +857,45 @@ function RamsDocument({ data, onReset, onExportPDF, onExportDrive, onExportOneDr
             <p className="rams-text">{data.competencies}</p>
           </div>
 
+          {data.trainingRequirements && data.trainingRequirements.length > 0 && (
+            <div className="rams-section">
+              <div className="rams-section-title">Training Requirements</div>
+              <div className="ppe-grid">
+                {data.trainingRequirements.map((item, i) => (
+                  <div key={i} className="ppe-item">{item}</div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {data.welfareArrangements && (
+            <div className="rams-section">
+              <div className="rams-section-title">Welfare Arrangements</div>
+              <p className="rams-text" style={{ whiteSpace: 'pre-line' }}>{data.welfareArrangements}</p>
+            </div>
+          )}
+
+          {data.environmentalControls && (
+            <div className="rams-section">
+              <div className="rams-section-title">Environmental Controls</div>
+              <p className="rams-text" style={{ whiteSpace: 'pre-line' }}>{data.environmentalControls}</p>
+            </div>
+          )}
+
+          {data.coshhAssessment && (
+            <div className="rams-section">
+              <div className="rams-section-title">COSHH Assessment</div>
+              <p className="rams-text" style={{ whiteSpace: 'pre-line' }}>{data.coshhAssessment}</p>
+            </div>
+          )}
+
+          {data.refuellingProcedure && (
+            <div className="rams-section">
+              <div className="rams-section-title">Refuelling Procedure</div>
+              <p className="rams-text" style={{ whiteSpace: 'pre-line' }}>{data.refuellingProcedure}</p>
+            </div>
+          )}
+
           <div className="rams-section">
             <div className="rams-section-title">Sign-off</div>
             <div className="sign-off-grid">
@@ -829,6 +911,38 @@ function RamsDocument({ data, onReset, onExportPDF, onExportDrive, onExportOneDr
               ))}
             </div>
           </div>
+
+          {data.references && data.references.length > 0 && (
+            <div className="rams-section">
+              <div className="rams-section-title">HSE References</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {data.references.map((ref, i) => (
+                  <a
+                    key={i}
+                    href={ref.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 10,
+                      background: '#1e2128', border: '1px solid #2a2d35',
+                      borderRadius: 7, padding: '9px 14px',
+                      color: '#c0c0b8', fontSize: 13, textDecoration: 'none',
+                      transition: 'all 0.15s',
+                    }}
+                    onMouseEnter={e => { e.currentTarget.style.borderColor = '#00e5a0'; e.currentTarget.style.color = '#00e5a0'; }}
+                    onMouseLeave={e => { e.currentTarget.style.borderColor = '#2a2d35'; e.currentTarget.style.color = '#c0c0b8'; }}
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, opacity: 0.5 }}>
+                      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                      <polyline points="15 3 21 3 21 9"/>
+                      <line x1="10" y1="14" x2="21" y2="3"/>
+                    </svg>
+                    {ref.title}
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
 
         </div>
       </div>
@@ -854,6 +968,34 @@ export default function SafeFlowRAMS() {
   const [loadingStep, setLoadingStep] = useState(0);
   const [ramsData, setRamsData] = useState(null);
   const [error, setError] = useState('');
+  const [showSettings, setShowSettings]     = useState(false);
+  const [showClarifying, setShowClarifying] = useState(false);
+  const [user, setUser]                     = useState(null);
+  const [authLoading, setAuthLoading]       = useState(true);
+  const [profile, setProfile]               = useState(DEFAULT_PROFILE);
+  const [procedures, setProcedures]         = useState([]);
+  const [activeTemplate, setActiveTemplate] = useState(null);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+      setAuthLoading(false);
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => {
+      setUser(session?.user ?? null);
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    supabase.from('company_profiles').select('data').eq('user_id', user.id).single()
+      .then(({ data }) => { if (data?.data) setProfile(p => ({ ...p, ...data.data })); });
+    supabase.from('procedures').select('*').eq('user_id', user.id).order('created_at')
+      .then(({ data }) => { if (data) setProcedures(data); });
+    supabase.from('templates').select('*').eq('user_id', user.id).eq('is_active', true).limit(1)
+      .then(({ data }) => { setActiveTemplate(data?.[0] || null); });
+  }, [user]);
 
   const addPhoto = useCallback((photo) => {
     setPhotos(prev => [...prev, photo]);
@@ -863,14 +1005,20 @@ export default function SafeFlowRAMS() {
     setPhotos(prev => prev.filter((_, i) => i !== index));
   }, []);
 
-  const buildPrompt = () => {
+  const buildPrompt = (answers) => {
     const task = taskType === 'Other (describe below)' ? customTask : taskType;
+    const guidance = filterGuidanceForTask(task, 14);
+    const guidanceBlock = guidance.length
+      ? `\nRELEVANT HSE GUIDANCE (select the most applicable for the references field):\n${guidance.map(g => `- ${g.title}: ${g.url}`).join('\n')}\n`
+      : '';
     return `You are an expert HSQE Manager with 15+ years of experience producing Risk Assessment and Method Statements (RAMS) for UK field contractors. You must produce a comprehensive, compliant RAMS document based on the site photos provided and the task description below.
 
 Task Type: ${task}
 ${location ? `Site Location: ${location}` : ''}
 ${additionalInfo ? `Additional Information: ${additionalInfo}` : ''}
-
+${buildAnswersContext(answers)}${injectProfileIntoPrompt(profile)}
+${injectProceduresIntoPrompt(procedures, task)}
+${guidanceBlock}
 Analyse the site photos carefully and identify all visible hazards, site conditions, environmental factors, and anything relevant to safe working.
 
 Respond ONLY with a valid JSON object in exactly this structure, no preamble, no markdown:
@@ -884,26 +1032,40 @@ Respond ONLY with a valid JSON object in exactly this structure, no preamble, no
     {
       "hazard": "Hazard name",
       "thoseAtRisk": "Who is at risk",
+      "initialLikelihood": 4,
+      "initialSeverity": 4,
       "initialRisk": "High|Medium|Low",
       "controls": "Specific control measures to reduce this risk",
+      "residualLikelihood": 2,
+      "residualSeverity": 3,
       "residualRisk": "High|Medium|Low"
     }
   ],
   "methodStatement": "Step-by-step method statement as a numbered sequence. Each step on a new line starting with the step number. Minimum 8 steps covering: pre-task checks, site setup, task execution sequence, quality checks, and demobilisation.",
   "ppe": ["PPE item 1", "PPE item 2", "PPE item 3"],
-  "emergencyArrangements": "Clear emergency arrangements covering: nearest A&E hospital, emergency services contact (999), site emergency contact, first aid provision, nearest first aider, emergency assembly point, procedure if worker is injured or incident occurs",
-  "competencies": "Required certifications, qualifications, training, and experience for operatives undertaking this work under UK legislation and industry standards"
+  "welfareArrangements": "Welfare facilities available on site under CDM 2015 Regulation 13: toilets, washing facilities with hot/cold water and soap, rest area, drinking water supply, changing facilities if required, and facility for warming food. Include responsibilities for maintaining welfare standards throughout the works.",
+  "environmentalControls": "Environmental controls under Environmental Protection Act 1990 and site-specific requirements: spill containment measures, noise and vibration management, dust suppression, waste segregation and disposal routes, fuel and oil storage requirements, protection of watercourses and drainage, and any required environmental monitoring.",
+  "coshhAssessment": "COSHH assessment under COSHH Regulations 2002: list each hazardous substance used or potentially encountered (fuels, lubricants, dust, chemicals, exhaust fumes), route of exposure, health effects, and control measures. If no COSHH hazards are identified, state explicitly.",
+  "refuellingProcedure": "Step-by-step refuelling procedure for plant and equipment on site. Cover: approved fuel storage location, minimum separation distances, spill kit location and use, no-smoking and no-ignition-source zone, earthing requirements where applicable, correct PPE for refuelling, prohibition on refuelling with engine running, disposal of contaminated absorbent materials, and emergency procedure in event of fuel spill.",
+  "trainingRequirements": ["Training/certification requirement 1", "Training/certification requirement 2"],
+  "emergencyArrangements": "Clear emergency arrangements: nearest A&E hospital with full name and address based on the site location provided, emergency services (999), site emergency contact name and number, first aid provision and location of first aid kit, name of nearest first aider on site, emergency assembly point, RIDDOR reportable incident procedure, and actions to take if a worker is injured.",
+  "competencies": "Required certifications, qualifications, training, and experience for operatives undertaking this work under UK legislation and industry standards",
+  "reviewDate": "This document should be reviewed within 12 months of issue, or immediately if scope of works changes, an incident occurs, or new hazards are identified",
+  "references": [
+    { "title": "Exact title from the HSE Guidance list above", "url": "https://exact-url-from-list" }
+  ]
 }
 
-Produce at least 6 hazards. Be specific and technical — this is a legally significant document. Reference relevant UK regulations where appropriate (HASAWA 1974, MHSWR 1999, CDM 2015, RIDDOR, etc.). PPE list should include at minimum 6 items appropriate to the task.`;
+Produce at least 6 hazards. Use the 5×5 risk matrix: Likelihood (1=Rare, 2=Unlikely, 3=Possible, 4=Likely, 5=Almost Certain) × Severity (1=Negligible, 2=Minor, 3=Moderate, 4=Major, 5=Catastrophic) = Risk Rating (1-6=Low, 7-14=Medium, 15-25=High). Be specific and technical — this is a legally significant document. Reference relevant UK regulations (HASAWA 1974, MHSWR 1999, CDM 2015, RIDDOR, COSHH 2002, Environmental Protection Act 1990, etc.). PPE minimum 6 items. trainingRequirements must list each individual certification, competency card, or course required — one item per entry. For references: select 4-8 HSE documents from the list provided that are most directly applicable to this specific task — use exact titles and URLs from the list.`;
   };
 
   const OPENAI_API_KEY = process.env.NEXT_PUBLIC_OPENAI_API_KEY;
 
-  const generateRAMS = async () => {
+  const generateRAMS = async (answers = {}) => {
     const task = taskType === 'Other (describe below)' ? customTask : taskType;
     if (!task || photos.length === 0) return;
 
+    setShowClarifying(false);
     setLoading(true);
     setError('');
     setLoadingStep(0);
@@ -935,7 +1097,7 @@ Produce at least 6 hazards. Be specific and technical — this is a legally sign
             role: 'user',
             content: [
               ...imageContents,
-              { type: 'text', text: buildPrompt() }
+              { type: 'text', text: buildPrompt(answers) }
             ]
           }]
         })
@@ -961,6 +1123,14 @@ Produce at least 6 hazards. Be specific and technical — this is a legally sign
       setLoadingStep(3);
       await new Promise(r => setTimeout(r, 400));
       setRamsData(parsed);
+      if (user) {
+        supabase.from('rams_documents').insert({
+          user_id: user.id,
+          task_type: parsed.taskType,
+          location: parsed.location,
+          data: parsed,
+        }).then(() => {});
+      }
     } catch (err) {
       clearInterval(stepInterval);
       setError(err.message || 'Something went wrong. Please try again.');
@@ -1002,6 +1172,7 @@ Produce at least 6 hazards. Be specific and technical — this is a legally sign
         <span>Date: ${new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' })}</span>
         <span>Location: ${ramsData.location}</span>
         <span>Ref: SF-${Date.now().toString().slice(-6)}</span>
+        ${ramsData.reviewDate ? `<span>Review by: ${ramsData.reviewDate}</span>` : ''}
       </div>
       <div class="status">⚠ DRAFT — REVIEW AND SIGN-OFF REQUIRED BEFORE USE</div>
 
@@ -1018,14 +1189,14 @@ Produce at least 6 hazards. Be specific and technical — this is a legally sign
       <div class="section">
         <div class="section-title">Hazard Register & Risk Assessment</div>
         <table>
-          <thead><tr><th>Hazard</th><th>Those at Risk</th><th>Initial Risk</th><th>Controls</th><th>Residual Risk</th></tr></thead>
+          <thead><tr><th>Hazard</th><th>Those at Risk</th><th>Initial Risk (L×S)</th><th>Controls</th><th>Residual Risk (L×S)</th></tr></thead>
           <tbody>
             ${ramsData.hazards.map(h => `<tr>
               <td>${h.hazard}</td>
               <td>${h.thoseAtRisk}</td>
-              <td><span class="risk-${h.initialRisk.toLowerCase()}">${h.initialRisk}</span></td>
+              <td><span class="risk-${h.initialRisk.toLowerCase()}">${h.initialRisk}</span>${h.initialLikelihood ? `<br><span style="font-size:10px;color:#666">${h.initialLikelihood}×${h.initialSeverity}=${h.initialLikelihood * h.initialSeverity}</span>` : ''}</td>
               <td>${h.controls}</td>
-              <td><span class="risk-${h.residualRisk.toLowerCase()}">${h.residualRisk}</span></td>
+              <td><span class="risk-${h.residualRisk.toLowerCase()}">${h.residualRisk}</span>${h.residualLikelihood ? `<br><span style="font-size:10px;color:#666">${h.residualLikelihood}×${h.residualSeverity}=${h.residualLikelihood * h.residualSeverity}</span>` : ''}</td>
             </tr>`).join('')}
           </tbody>
         </table>
@@ -1053,6 +1224,38 @@ Produce at least 6 hazards. Be specific and technical — this is a legally sign
         <p>${ramsData.competencies}</p>
       </div>
 
+      ${ramsData.trainingRequirements && ramsData.trainingRequirements.length ? `
+      <div class="section">
+        <div class="section-title">Training Requirements</div>
+        <div class="ppe-grid">
+          ${ramsData.trainingRequirements.map(item => `<div class="ppe-item">✓ ${item}</div>`).join('')}
+        </div>
+      </div>` : ''}
+
+      ${ramsData.welfareArrangements ? `
+      <div class="section">
+        <div class="section-title">Welfare Arrangements</div>
+        <pre>${ramsData.welfareArrangements}</pre>
+      </div>` : ''}
+
+      ${ramsData.environmentalControls ? `
+      <div class="section">
+        <div class="section-title">Environmental Controls</div>
+        <pre>${ramsData.environmentalControls}</pre>
+      </div>` : ''}
+
+      ${ramsData.coshhAssessment ? `
+      <div class="section">
+        <div class="section-title">COSHH Assessment</div>
+        <pre>${ramsData.coshhAssessment}</pre>
+      </div>` : ''}
+
+      ${ramsData.refuellingProcedure ? `
+      <div class="section">
+        <div class="section-title">Refuelling Procedure</div>
+        <pre>${ramsData.refuellingProcedure}</pre>
+      </div>` : ''}
+
       <div class="section">
         <div class="section-title">Sign-off</div>
         <div class="sign-grid">
@@ -1074,6 +1277,21 @@ Produce at least 6 hazards. Be specific and technical — this is a legally sign
     setTimeout(() => win.print(), 500);
   };
 
+  const handleExportWord = async () => {
+    if (!activeTemplate || !ramsData) return;
+    try {
+      const { data: fileData, error } = await supabase.storage.from('templates').download(activeTemplate.storage_path);
+      if (error) throw error;
+      const arrayBuffer = await fileData.arrayBuffer();
+      const { fillTemplate, downloadFile } = await import('./lib/templateFiller');
+      const refNum = `SF-${Date.now().toString().slice(-6)}`;
+      const filled = await fillTemplate(arrayBuffer, ramsData, profile, refNum);
+      downloadFile(filled, `RAMS-${ramsData.taskType.replace(/\W+/g, '-')}.docx`);
+    } catch (err) {
+      setError(`Word export failed: ${err.message}`);
+    }
+  };
+
   const handleExportDrive = () => {
     alert('Google Drive integration requires OAuth setup. In the full product, this saves directly to your connected Drive folder in your own template.');
   };
@@ -1083,6 +1301,21 @@ Produce at least 6 hazards. Be specific and technical — this is a legally sign
   };
 
   const canGenerate = photos.length > 0 && (taskType && taskType !== 'Other (describe below)' || customTask.trim());
+
+  if (authLoading) {
+    return (
+      <>
+        <style>{styles}</style>
+        <div style={{ minHeight: '100vh', background: '#0f1117', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div className="loading-ring" style={{ width: 32, height: 32, borderWidth: 3 }} />
+        </div>
+      </>
+    );
+  }
+
+  if (!user) {
+    return <AuthScreen />;
+  }
 
   return (
     <>
@@ -1098,7 +1331,35 @@ Produce at least 6 hazards. Be specific and technical — this is a legally sign
               <div className="logo-sub">RAMS Builder</div>
             </div>
           </div>
-          <div className="badge">PROTOTYPE</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div className="badge">PROTOTYPE</div>
+            <button
+              onClick={() => setShowSettings(true)}
+              title="Company Settings"
+              style={{ background: 'none', border: '1.5px solid #2a2d35', borderRadius: 8, color: '#555', cursor: 'pointer', padding: '6px 10px', display: 'flex', alignItems: 'center', transition: 'all 0.15s' }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = '#555'; e.currentTarget.style.color = '#888'; }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = '#2a2d35'; e.currentTarget.style.color = '#555'; }}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="3"/>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+              </svg>
+            </button>
+            <button
+              onClick={() => supabase.auth.signOut()}
+              title="Sign out"
+              style={{ background: 'none', border: '1.5px solid #2a2d35', borderRadius: 8, color: '#555', cursor: 'pointer', padding: '6px 10px', display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontFamily: "'DM Sans', sans-serif", transition: 'all 0.15s' }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = '#ef4444'; e.currentTarget.style.color = '#ef4444'; }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = '#2a2d35'; e.currentTarget.style.color = '#555'; }}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                <polyline points="16 17 21 12 16 7"/>
+                <line x1="21" y1="12" x2="9" y2="12"/>
+              </svg>
+              Sign out
+            </button>
+          </div>
         </div>
 
         {!ramsData && !loading && (
@@ -1156,12 +1417,25 @@ Produce at least 6 hazards. Be specific and technical — this is a legally sign
               </div>
             </div>
 
-            <button className="generate-btn" onClick={generateRAMS} disabled={!canGenerate}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
-              </svg>
-              Generate RAMS Document
-            </button>
+            {!showClarifying && (
+              <button className="generate-btn" onClick={() => setShowClarifying(true)} disabled={!canGenerate}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+                </svg>
+                Generate RAMS Document
+              </button>
+            )}
+
+            {showClarifying && (
+              <ClarifyingQuestions
+                taskType={taskType === 'Other (describe below)' ? customTask || null : taskType}
+                location={location}
+                additionalInfo={additionalInfo}
+                apiKey={OPENAI_API_KEY}
+                onSubmit={(answers) => generateRAMS(answers)}
+                onBack={() => setShowClarifying(false)}
+              />
+            )}
 
             {error && <div className="error-box">⚠ {error}</div>}
           </>
@@ -1170,15 +1444,37 @@ Produce at least 6 hazards. Be specific and technical — this is a legally sign
         {loading && <LoadingState step={loadingStep} />}
 
         {ramsData && !loading && (
-          <RamsDocument
-            data={ramsData}
-            onReset={() => { setRamsData(null); setPhotos([]); setTaskType(''); setCustomTask(''); setLocation(''); setAdditionalInfo(''); }}
-            onExportPDF={handleExportPDF}
-            onExportDrive={handleExportDrive}
-            onExportOneDrive={handleExportOneDrive}
-          />
+          <>
+            <RamsDocument
+              data={ramsData}
+              onReset={() => { setRamsData(null); setPhotos([]); setTaskType(''); setCustomTask(''); setLocation(''); setAdditionalInfo(''); setShowClarifying(false); }}
+              onExportPDF={handleExportPDF}
+              onExportWord={activeTemplate ? handleExportWord : null}
+              onExportDrive={handleExportDrive}
+              onExportOneDrive={handleExportOneDrive}
+            />
+            <CompliancePanel
+              ramsData={ramsData}
+              profile={profile}
+              procedures={procedures}
+              apiKey={OPENAI_API_KEY}
+              onUpdateRams={setRamsData}
+            />
+          </>
         )}
       </div>
+      {showSettings && (
+        <SettingsModal
+          onClose={() => setShowSettings(false)}
+          user={user}
+          profile={profile}
+          setProfile={setProfile}
+          procedures={procedures}
+          setProcedures={setProcedures}
+          activeTemplate={activeTemplate}
+          setActiveTemplate={setActiveTemplate}
+        />
+      )}
     </>
   );
 }
