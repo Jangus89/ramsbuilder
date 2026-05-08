@@ -1,42 +1,68 @@
+import { NextResponse } from 'next/server';
+
+const rateLimitMap = new Map();
+const RATE_LIMIT_WINDOW = 60_000;
+const RATE_LIMIT_MAX = 20;
+
+function checkRateLimit(ip) {
+  const now = Date.now();
+  const entry = rateLimitMap.get(ip);
+  if (!entry || now - entry.windowStart > RATE_LIMIT_WINDOW) {
+    rateLimitMap.set(ip, { windowStart: now, count: 1 });
+    return RATE_LIMIT_MAX - 1;
+  }
+  entry.count++;
+  if (entry.count > RATE_LIMIT_MAX) return -1;
+  return RATE_LIMIT_MAX - entry.count;
+}
+
 export async function POST(request) {
-  if (!process.env.OPENAI_API_KEY) {
-    return Response.json(
-      { error: { message: 'OPENAI_API_KEY is not configured on the server.' } },
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    return NextResponse.json(
+      { error: { message: 'OpenAI API key is not configured on the server.' } },
       { status: 500 }
     );
   }
 
-  let payload;
+  const ip = request.headers.get('x-forwarded-for') || 'unknown';
+  const remaining = checkRateLimit(ip);
+  if (remaining < 0) {
+    return NextResponse.json(
+      { error: { message: 'Too many requests. Please wait a moment and try again.' } },
+      { status: 429, headers: { 'X-RateLimit-Remaining': '0' } }
+    );
+  }
+
+  let body;
   try {
-    payload = await request.json();
+    body = await request.json();
   } catch {
-    return Response.json(
-      { error: { message: 'Invalid AI request payload.' } },
+    return NextResponse.json(
+      { error: { message: 'Invalid request body.' } },
       { status: 400 }
     );
   }
 
   try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    const resp = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        'Authorization': `Bearer ${apiKey}`,
       },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(body),
     });
 
-    let data;
-    try {
-      data = await response.json();
-    } catch {
-      data = { error: { message: 'OpenAI returned an unreadable response.' } };
-    }
+    const data = await resp.json();
 
-    return Response.json(data, { status: response.status });
-  } catch {
-    return Response.json(
-      { error: { message: 'Could not connect to OpenAI. Please try again.' } },
+    return NextResponse.json(data, {
+      status: resp.status,
+      headers: { 'X-RateLimit-Remaining': String(remaining) },
+    });
+  } catch (err) {
+    return NextResponse.json(
+      { error: { message: 'Failed to reach OpenAI. Please try again.' } },
       { status: 502 }
     );
   }

@@ -1,6 +1,6 @@
 'use client';
 import { useState, useRef, useEffect } from 'react';
-import { isSupabaseConfigured, supabase } from '../lib/supabase';
+import { supabase } from '../lib/supabase';
 import { DEFAULT_PROFILE } from '../lib/companyProfile';
 import { extractTextFromFile } from '../lib/procedureLibrary';
 import { downloadSampleTemplate } from '../lib/sampleTemplate';
@@ -81,9 +81,7 @@ function ProfileTab({ profile, setProfile, userId, onSaved }) {
 
   const save = async () => {
     setSaving(true);
-    if (isSupabaseConfigured) {
-      await supabase.from('company_profiles').upsert({ user_id: userId, data: profile, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
-    }
+    await supabase.from('company_profiles').upsert({ user_id: userId, data: profile, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
     setSaving(false);
     setSaved(true);
     onSaved(profile);
@@ -156,6 +154,17 @@ function ProceduresTab({ procedures, setProcedures, userId }) {
   const handleFile = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
+    const ext = file.name.split('.').pop().toLowerCase();
+    if (!['txt', 'pdf', 'docx'].includes(ext)) {
+      setExtractErr('Only .txt, .pdf, or .docx files are supported.');
+      e.target.value = '';
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setExtractErr('File must be under 10 MB.');
+      e.target.value = '';
+      return;
+    }
     setExtracting(true);
     setExtractErr('');
     try {
@@ -167,14 +176,14 @@ function ProceduresTab({ procedures, setProcedures, userId }) {
 
   const addProc = async () => {
     if (!form.title.trim() || !form.text.trim()) return;
+    if (procedures.length >= 50) {
+      setExtractErr('Maximum 50 procedures allowed. Remove one before adding another.');
+      return;
+    }
     setSaving(true);
     const row = { user_id: userId, title: form.title, code: form.code, category: form.category, text: form.text, char_count: form.text.length, file_name: form.title };
-    if (isSupabaseConfigured) {
-      const { data, error } = await supabase.from('procedures').insert(row).select().single();
-      if (!error && data) setProcedures(prev => [...prev, data]);
-    } else {
-      setProcedures(prev => [...prev, { ...row, id: `local-${Date.now()}`, created_at: new Date().toISOString() }]);
-    }
+    const { data, error } = await supabase.from('procedures').insert(row).select().single();
+    if (!error && data) setProcedures(prev => [...prev, data]);
     setSaving(false);
     setForm({ title: '', code: '', category: '', text: '' });
     setAdding(false);
@@ -182,9 +191,7 @@ function ProceduresTab({ procedures, setProcedures, userId }) {
   };
 
   const del = async (id) => {
-    if (isSupabaseConfigured) {
-      await supabase.from('procedures').delete().eq('id', id);
-    }
+    await supabase.from('procedures').delete().eq('id', id);
     setProcedures(prev => prev.filter(p => p.id !== id));
   };
 
@@ -324,7 +331,7 @@ Rules:
 
   const data = await callOpenAIChat({ model: 'gpt-4o', max_tokens: 1500, messages: [{ role: 'user', content: prompt }] });
   const raw = data.choices?.[0]?.message?.content || '[]';
-  return parseJsonResponse(raw, 'Could not read the template tagging response.');
+  return parseJsonResponse(raw, 'Could not analyse template. Please try again.');
 }
 
 function applyReplacementsToXml(xml, replacements) {
@@ -356,19 +363,13 @@ function TemplateTab({ userId, activeTemplate, setActiveTemplate }) {
   const upload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    if (!isSupabaseConfigured) {
-      setErr('Template upload requires Supabase storage. Use the app without a template, or configure Supabase to enable this feature.');
-      e.target.value = '';
-      return;
-    }
     if (!file.name.endsWith('.docx')) { setErr('Only .docx files are supported.'); return; }
+    if (file.size > 10 * 1024 * 1024) { setErr('Template file must be under 10 MB.'); return; }
     setErr('');
     setTagCount(0);
 
-    // Read file
     const arrayBuffer = await file.arrayBuffer();
 
-    // Remove previous template
     if (activeTemplate?.storage_path) {
       await supabase.storage.from('templates').remove([activeTemplate.storage_path]);
       await supabase.from('templates').delete().eq('user_id', userId);
@@ -381,20 +382,20 @@ function TemplateTab({ userId, activeTemplate, setActiveTemplate }) {
     setPhase('analysing');
     try {
       const replacements = await analyzeAndTagTemplate(arrayBuffer);
-      if (replacements.length > 0) {
-        const PizZip = (await import('pizzip')).default;
-        const zip = new PizZip(arrayBuffer);
-        const xmlFile = zip.file('word/document.xml');
-        if (xmlFile) {
-          const { xml: tagged, applied } = applyReplacementsToXml(xmlFile.asText(), replacements);
-          zip.file('word/document.xml', tagged);
-          processedBuffer = zip.generate({ type: 'arraybuffer' });
-          detected = applied;
+        if (replacements.length > 0) {
+          const PizZip = (await import('pizzip')).default;
+          const zip = new PizZip(arrayBuffer);
+          const xmlFile = zip.file('word/document.xml');
+          if (xmlFile) {
+            const { xml: tagged, applied } = applyReplacementsToXml(xmlFile.asText(), replacements);
+            zip.file('word/document.xml', tagged);
+            processedBuffer = zip.generate({ type: 'arraybuffer' });
+            detected = applied;
+          }
         }
+      } catch {
+        // Non-fatal — upload the original if analysis fails
       }
-    } catch {
-      // Non-fatal — upload the original if analysis fails.
-    }
 
     setPhase('uploading');
     const path = `${userId}/${Date.now()}-${file.name}`;
@@ -415,12 +416,6 @@ function TemplateTab({ userId, activeTemplate, setActiveTemplate }) {
 
   const remove = async () => {
     if (!activeTemplate) return;
-    if (!isSupabaseConfigured) {
-      setActiveTemplate(null);
-      setPhase('idle');
-      setTagCount(0);
-      return;
-    }
     await supabase.storage.from('templates').remove([activeTemplate.storage_path]);
     await supabase.from('templates').delete().eq('id', activeTemplate.id);
     setActiveTemplate(null);

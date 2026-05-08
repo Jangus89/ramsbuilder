@@ -88,7 +88,7 @@ export default function CompliancePanel({ ramsData, profile, procedures, onUpdat
       const prompt = buildCompliancePrompt(ramsData, profile, relevant);
       const data = await callOpenAIChat({ model: 'gpt-4o', max_tokens: 2000, messages: [{ role: 'user', content: prompt }] });
       const text = data.choices?.[0]?.message?.content || '';
-      setResult(parseJsonResponse(text, 'Could not read the compliance check response. Please try again.'));
+      setResult(parseJsonResponse(text, 'Compliance check returned invalid data. Please try again.'));
       setState('done');
     } catch (err) {
       setErrMsg(err.message || 'Compliance check failed');
@@ -113,7 +113,7 @@ export default function CompliancePanel({ ramsData, profile, procedures, onUpdat
       const prompt = buildFixPrompt(ramsData, issuesToFix);
       const data = await callOpenAIChat({ model: 'gpt-4o', max_tokens: 4000, messages: [{ role: 'user', content: prompt }] });
       const text = data.choices?.[0]?.message?.content || '';
-      const updated = parseJsonResponse(text, 'Could not read the updated RAMS response. Please try again.');
+      const updated = parseJsonResponse(text, 'Failed to parse updated RAMS. Please try again.');
       onUpdateRams(updated);
       setSelected(new Set());
       setResult(null);
