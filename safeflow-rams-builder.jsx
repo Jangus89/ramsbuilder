@@ -1388,7 +1388,10 @@ Produce at least 6 hazards. Use the 5×5 risk matrix: Likelihood (1=Rare, 2=Unli
 
             {showClarifying && (
               <ClarifyingQuestions
-                taskType={taskType === 'Other (describe below)' ? null : taskType}
+                taskType={taskType === 'Other (describe below)' ? customTask || null : taskType}
+                location={location}
+                additionalInfo={additionalInfo}
+                apiKey={OPENAI_API_KEY}
                 onSubmit={(answers) => generateRAMS(answers)}
                 onBack={() => setShowClarifying(false)}
               />

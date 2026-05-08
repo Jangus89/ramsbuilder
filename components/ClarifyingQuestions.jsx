@@ -1,78 +1,80 @@
 'use client';
-import { useState } from 'react';
-
-const BASE_QUESTIONS = [
-  {
-    id: 'operatives',
-    q: 'How many operatives will be on site?',
-    opts: ['1–2', '3–5', '6–10', '10+ operatives'],
-  },
-  {
-    id: 'duration',
-    q: 'Expected duration of works?',
-    opts: ['Less than 1 day', '2–3 days', 'Up to 1 week', 'Over 1 week'],
-  },
-  {
-    id: 'publicAccess',
-    q: 'Public access to the work area?',
-    opts: ['No — controlled access only', 'Partial — pedestrians nearby', 'Yes — public can approach', 'Adjacent to live carriageway'],
-  },
-  {
-    id: 'plant',
-    q: 'Plant and machinery required?',
-    opts: ['Hand tools only', 'Small plant (< 3.5t)', 'Large plant / excavators', 'Crane or lifting operations'],
-  },
-];
-
-const TASK_EXTRAS = {
-  'Working at Height':          [{ id: 'maxHeight',    q: 'Maximum working height?',        opts: ['Up to 2m', '2m–4m', '4m–10m', 'Over 10m'] }],
-  'Roof Work':                  [{ id: 'maxHeight',    q: 'Maximum working height?',        opts: ['Up to 2m', '2m–4m', '4m–10m', 'Over 10m'] }],
-  'Excavation / Groundworks':   [
-    { id: 'excavDepth',  q: 'Maximum excavation depth?',       opts: ['< 0.5m (topsoil)', '0.5m–1.2m', '1.2m–2m', 'Over 2m'] },
-    { id: 'underground', q: 'Underground services present?',   opts: ['No known services', 'CAT scan required', 'Services identified — marked', 'Services to be isolated first'] },
-  ],
-  'Underground Services':       [{ id: 'underground', q: 'Services location status?',        opts: ['Unknown — trial dig required', 'CAT scan complete', 'Marked on drawings', 'Isolation required first'] }],
-  'Confined Space Entry':       [{ id: 'atmosphere',  q: 'Atmospheric monitoring level?',    opts: ['Clean entry — no gas risk', 'CO / O₂ monitoring', 'Full gas detection suite', 'SCBA / BA required'] }],
-  'Hot Works / Welding':        [{ id: 'environment', q: 'Working environment?',             opts: ['Open air', 'Ventilated building', 'Poorly ventilated building', 'Confined / enclosed space'] }],
-  'Electrical Isolation':       [{ id: 'voltage',     q: 'System voltage?',                  opts: ['ELV (< 50V AC)', 'Low voltage 230V', '415V 3-phase', 'High voltage (> 1kV)'] }],
-  'Road / Highway Works':       [{ id: 'trafficSpeed',q: 'Carriageway speed limit?',         opts: ['20–30 mph', '40–50 mph', '60 mph', '70 mph / motorway'] }],
-  'Crane / Lifting Operations': [{ id: 'swl',         q: 'Maximum SWL required?',            opts: ['< 1 tonne', '1–5 tonnes', '5–25 tonnes', '> 25 tonnes'] }],
-  'Demolition / Strip Out':     [{ id: 'structure',   q: 'Structure type?',                  opts: ['Lightweight partitions', 'Brick / block masonry', 'Reinforced concrete', 'Structural steel frame'] }],
-  'Asbestos Removal':           [{ id: 'asbestos',    q: 'Works scope / ACM type?',          opts: ['Presumed — survey required first', 'Non-licensed ACM removal', 'Licensed removal (CAR 2012)', 'Air monitoring required'] }],
-  'Tree Work / Vegetation':     [{ id: 'treeHeight',  q: 'Maximum tree / vegetation height?',opts: ['Under 5m', '5m–10m', '10m–20m', 'Over 20m'] }],
-};
-
-const ANSWER_LABELS = {
-  operatives:   'Operatives on site',
-  duration:     'Duration of works',
-  publicAccess: 'Public access',
-  plant:        'Plant and machinery',
-  maxHeight:    'Maximum working height',
-  excavDepth:   'Excavation depth',
-  underground:  'Underground services',
-  atmosphere:   'Atmospheric monitoring',
-  environment:  'Working environment',
-  voltage:      'System voltage',
-  trafficSpeed: 'Traffic speed',
-  swl:          'Maximum SWL',
-  structure:    'Structure type',
-  asbestos:     'Asbestos scope',
-  treeHeight:   'Tree / vegetation height',
-};
+import { useState, useEffect } from 'react';
 
 export function buildAnswersContext(answers) {
   if (!answers || Object.keys(answers).length === 0) return '';
-  const lines = Object.entries(answers).map(([k, v]) => `• ${ANSWER_LABELS[k] || k}: ${v}`);
+  const lines = Object.entries(answers).map(([, v]) => `• ${v.question}: ${v.answer}`);
   return `\nCONFIRMED SITE DETAILS:\n${lines.join('\n')}\n`;
 }
 
-export default function ClarifyingQuestions({ taskType, onSubmit, onBack }) {
-  const extras = (taskType && TASK_EXTRAS[taskType]) || [];
-  const allQuestions = [...BASE_QUESTIONS, ...extras];
-  const [answers, setAnswers] = useState({});
-  const allAnswered = allQuestions.every(q => answers[q.id]);
+async function fetchQuestions({ taskType, location, additionalInfo, apiKey }) {
+  const context = [
+    taskType        && `Task type: ${taskType}`,
+    location        && `Site location: ${location}`,
+    additionalInfo  && `Additional context: ${additionalInfo}`,
+  ].filter(Boolean).join('\n');
 
-  const select = (id, opt) => setAnswers(prev => ({ ...prev, [id]: opt }));
+  const prompt = `You are helping a HSQE professional generate a RAMS document for a UK construction / field operations task. Before the full document is generated, ask the most important clarifying questions to ensure the output is accurate and site-specific.
+
+${context}
+
+Generate 4–6 multiple-choice clarifying questions. Focus on factors that genuinely change the risk profile or required controls — scale, environment, specific equipment, proximity hazards, public presence, services, weather exposure, etc. Avoid generic admin questions.
+
+Return ONLY valid JSON with no markdown:
+{
+  "questions": [
+    {
+      "id": "snake_case_id",
+      "question": "The question text?",
+      "options": ["Option A", "Option B", "Option C", "Option D"]
+    }
+  ]
+}
+
+Rules:
+- 4–6 questions, ordered most-to-least impactful
+- 3–4 options each, mutually exclusive, covering the realistic range
+- Use UK construction / HSQE terminology
+- Tailor specifically to the task and location provided — do not ask generic questions that apply to every job`;
+
+  const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+    body: JSON.stringify({
+      model: 'gpt-4o',
+      max_tokens: 600,
+      messages: [{ role: 'user', content: prompt }],
+    }),
+  });
+  const data = await resp.json();
+  if (data.error) throw new Error(data.error.message);
+  const raw = data.choices?.[0]?.message?.content || '';
+  const clean = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+  return JSON.parse(clean).questions;
+}
+
+export default function ClarifyingQuestions({ taskType, location, additionalInfo, apiKey, onSubmit, onBack }) {
+  const [questions, setQuestions] = useState([]);
+  const [loadState, setLoadState] = useState('loading'); // loading | ready | error
+  const [loadErr, setLoadErr]     = useState('');
+  const [answers, setAnswers]     = useState({});
+
+  useEffect(() => {
+    setLoadState('loading');
+    setAnswers({});
+    fetchQuestions({ taskType, location, additionalInfo, apiKey })
+      .then(qs => { setQuestions(qs); setLoadState('ready'); })
+      .catch(err => { setLoadErr(err.message || 'Could not generate questions'); setLoadState('error'); });
+  }, [taskType, location, additionalInfo, apiKey]);
+
+  const allAnswered = questions.length > 0 && questions.every(q => answers[q.id]);
+
+  const select = (q, opt) =>
+    setAnswers(prev => ({ ...prev, [q.id]: { question: q.question, answer: opt } }));
+
+  const handleSubmit = () => {
+    if (allAnswered) onSubmit(answers);
+  };
 
   return (
     <div style={{ marginTop: 32, background: '#13151c', border: '1.5px solid #1e2128', borderRadius: 12, overflow: 'hidden' }}>
@@ -85,16 +87,52 @@ export default function ClarifyingQuestions({ taskType, onSubmit, onBack }) {
           A few quick details
         </div>
         <div style={{ fontSize: 13, color: '#555', lineHeight: 1.5 }}>
-          Your answers are injected directly into the AI prompt. More context = more accurate, site-specific RAMS.
+          {loadState === 'loading'
+            ? 'Generating questions specific to this job…'
+            : 'Your answers are injected directly into the prompt for a more accurate, site-specific RAMS.'}
         </div>
       </div>
 
-      {/* Questions */}
+      {/* Body */}
       <div style={{ padding: '28px' }}>
-        {allQuestions.map((q, qi) => {
+        {loadState === 'loading' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {[...Array(5)].map((_, i) => (
+              <div key={i} style={{ opacity: 1 - i * 0.15 }}>
+                <div style={{ width: `${55 + i * 8}%`, height: 14, background: '#1e2128', borderRadius: 4, marginBottom: 12 }} />
+                <div style={{ display: 'flex', gap: 8 }}>
+                  {[...Array(4)].map((_, j) => (
+                    <div key={j} style={{ width: 90, height: 36, background: '#1e2128', borderRadius: 8 }} />
+                  ))}
+                </div>
+              </div>
+            ))}
+            <style>{`@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }`}</style>
+            <style>{`.skeleton-pulse > div { animation: pulse 1.4s ease-in-out infinite; }`}</style>
+          </div>
+        )}
+
+        {loadState === 'error' && (
+          <div style={{ textAlign: 'center', padding: '24px 0' }}>
+            <div style={{ fontSize: 13, color: '#ef4444', marginBottom: 16 }}>⚠ {loadErr}</div>
+            <button
+              onClick={() => {
+                setLoadState('loading');
+                fetchQuestions({ taskType, location, additionalInfo, apiKey })
+                  .then(qs => { setQuestions(qs); setLoadState('ready'); })
+                  .catch(err => { setLoadErr(err.message); setLoadState('error'); });
+              }}
+              style={{ background: 'none', border: '1.5px solid #2a2d35', color: '#888', borderRadius: 8, fontFamily: "'DM Sans', sans-serif", fontSize: 13, padding: '8px 18px', cursor: 'pointer' }}
+            >
+              Retry
+            </button>
+          </div>
+        )}
+
+        {loadState === 'ready' && questions.map((q, qi) => {
           const answered = !!answers[q.id];
           return (
-            <div key={q.id} style={{ marginBottom: qi < allQuestions.length - 1 ? 28 : 0 }}>
+            <div key={q.id} style={{ marginBottom: qi < questions.length - 1 ? 28 : 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
                 <div style={{
                   width: 22, height: 22, borderRadius: '50%', flexShrink: 0,
@@ -103,19 +141,19 @@ export default function ClarifyingQuestions({ taskType, onSubmit, onBack }) {
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   fontSize: 11, color: '#00e5a0', transition: 'all 0.2s',
                 }}>
-                  {answered ? '✓' : <span style={{ fontSize: 10, color: '#555' }}>{qi + 1}</span>}
+                  {answered
+                    ? '✓'
+                    : <span style={{ fontSize: 10, color: '#555' }}>{qi + 1}</span>}
                 </div>
-                <div style={{ fontSize: 14, color: '#c0c0b8', fontWeight: 500 }}>
-                  {q.q}
-                </div>
+                <div style={{ fontSize: 14, color: '#c0c0b8', fontWeight: 500 }}>{q.question}</div>
               </div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, paddingLeft: 32 }}>
-                {q.opts.map(opt => {
-                  const sel = answers[q.id] === opt;
+                {q.options.map(opt => {
+                  const sel = answers[q.id]?.answer === opt;
                   return (
                     <button
                       key={opt}
-                      onClick={() => select(q.id, opt)}
+                      onClick={() => select(q, opt)}
                       style={{
                         background: sel ? 'rgba(0,229,160,0.08)' : '#1e2128',
                         border: `1.5px solid ${sel ? '#00e5a0' : '#2a2d35'}`,
@@ -142,7 +180,7 @@ export default function ClarifyingQuestions({ taskType, onSubmit, onBack }) {
       {/* Footer */}
       <div style={{ padding: '20px 28px', borderTop: '1px solid #1e2128', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
         <button
-          onClick={() => allAnswered && onSubmit(answers)}
+          onClick={handleSubmit}
           disabled={!allAnswered}
           style={{
             background: allAnswered ? '#00e5a0' : '#1e2128',
@@ -169,9 +207,9 @@ export default function ClarifyingQuestions({ taskType, onSubmit, onBack }) {
         >
           ← Back
         </button>
-        {!allAnswered && (
+        {loadState === 'ready' && !allAnswered && (
           <div style={{ fontSize: 12, color: '#555' }}>
-            {allQuestions.length - Object.keys(answers).length} question{allQuestions.length - Object.keys(answers).length !== 1 ? 's' : ''} remaining
+            {questions.length - Object.keys(answers).length} question{questions.length - Object.keys(answers).length !== 1 ? 's' : ''} remaining
           </div>
         )}
       </div>
