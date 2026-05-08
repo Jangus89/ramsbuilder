@@ -1,8 +1,9 @@
 'use client';
-import { useState, useRef } from 'react';
-import { useLocalStorage } from '../lib/useLocalStorage';
+import { useState, useRef, useEffect } from 'react';
+import { supabase } from '../lib/supabase';
 import { DEFAULT_PROFILE } from '../lib/companyProfile';
 import { extractTextFromFile } from '../lib/procedureLibrary';
+import { downloadSampleTemplate } from '../lib/sampleTemplate';
 
 const CATEGORIES = [
   { value: '', label: 'All tasks' },
@@ -23,124 +24,131 @@ const CATEGORIES = [
 ];
 
 const S = {
-  overlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', zIndex: 200, overflowY: 'auto', display: 'flex', justifyContent: 'center', padding: '24px 16px 48px' },
-  modal: { width: '100%', maxWidth: 740, background: '#0f1117', border: '1px solid #1e2128', borderRadius: 16, display: 'flex', flexDirection: 'column' },
-  header: { padding: '20px 28px', borderBottom: '1px solid #1e2128', display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, background: '#0f1117', borderRadius: '16px 16px 0 0', zIndex: 1 },
-  tabs: { display: 'flex', borderBottom: '1px solid #1e2128', padding: '0 28px', background: '#0f1117', position: 'sticky', top: 61, zIndex: 1 },
-  tab: (active) => ({ background: 'none', border: 'none', borderBottom: active ? '2px solid #00e5a0' : '2px solid transparent', color: active ? '#00e5a0' : '#555', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", fontSize: 13, fontWeight: 500, padding: '12px 16px 10px', transition: 'all 0.15s', marginBottom: -1 }),
-  body: { padding: '28px' },
+  overlay:  { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', zIndex: 200, overflowY: 'auto', display: 'flex', justifyContent: 'center', padding: '24px 16px 64px' },
+  modal:    { width: '100%', maxWidth: 760, background: '#0f1117', border: '1px solid #1e2128', borderRadius: 16, display: 'flex', flexDirection: 'column' },
+  header:   { padding: '20px 28px', borderBottom: '1px solid #1e2128', display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, background: '#0f1117', borderRadius: '16px 16px 0 0', zIndex: 1 },
+  tabBar:   { display: 'flex', borderBottom: '1px solid #1e2128', padding: '0 28px', background: '#0f1117', position: 'sticky', top: 61, zIndex: 1 },
+  tab:      (a) => ({ background: 'none', border: 'none', borderBottom: a ? '2px solid #00e5a0' : '2px solid transparent', color: a ? '#00e5a0' : '#555', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", fontSize: 13, fontWeight: 500, padding: '12px 14px 10px', transition: 'all 0.15s', marginBottom: -1 }),
+  body:     { padding: '28px' },
+  sec:      { marginBottom: 28 },
   secTitle: { fontFamily: "'DM Mono', monospace", fontSize: 10, color: '#555', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 },
-  secLine: { flex: 1, height: 1, background: '#1e2128' },
-  grid2: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 16px' },
-  field: { marginBottom: 16 },
-  label: { display: 'block', fontSize: 12, color: '#888', fontWeight: 500, marginBottom: 6 },
-  help: { fontSize: 11, color: '#555', marginTop: 4, lineHeight: 1.5 },
-  input: { width: '100%', background: '#13151c', border: '1.5px solid #1e2128', borderRadius: 8, color: '#e8e8e4', fontFamily: "'DM Sans', sans-serif", fontSize: 13, padding: '10px 12px', outline: 'none', boxSizing: 'border-box', transition: 'border-color 0.2s' },
+  secLine:  { flex: 1, height: 1, background: '#1e2128' },
+  grid2:    { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 16px' },
+  field:    { marginBottom: 16 },
+  label:    { display: 'block', fontSize: 12, color: '#888', fontWeight: 500, marginBottom: 6 },
+  help:     { fontSize: 11, color: '#555', marginTop: 4, lineHeight: 1.5 },
+  input:    { width: '100%', background: '#13151c', border: '1.5px solid #1e2128', borderRadius: 8, color: '#e8e8e4', fontFamily: "'DM Sans', sans-serif", fontSize: 13, padding: '10px 12px', outline: 'none', boxSizing: 'border-box', transition: 'border-color 0.2s' },
   textarea: { width: '100%', background: '#13151c', border: '1.5px solid #1e2128', borderRadius: 8, color: '#e8e8e4', fontFamily: "'DM Sans', sans-serif", fontSize: 13, padding: '10px 12px', outline: 'none', resize: 'vertical', boxSizing: 'border-box', lineHeight: 1.6, transition: 'border-color 0.2s' },
-  select: { width: '100%', background: '#13151c', border: '1.5px solid #1e2128', borderRadius: 8, color: '#e8e8e4', fontFamily: "'DM Sans', sans-serif", fontSize: 13, padding: '10px 12px', outline: 'none', appearance: 'none', backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23555' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E\")", backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center', paddingRight: 32 },
-  btnPrimary: { background: '#00e5a0', color: '#0f1117', border: 'none', borderRadius: 8, fontFamily: "'DM Sans', sans-serif", fontSize: 13, fontWeight: 600, padding: '10px 20px', cursor: 'pointer' },
+  select:   { width: '100%', background: '#13151c', border: '1.5px solid #1e2128', borderRadius: 8, color: '#e8e8e4', fontFamily: "'DM Sans', sans-serif", fontSize: 13, padding: '10px 12px', outline: 'none', appearance: 'none', backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23555' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E\")", backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center', paddingRight: 32 },
+  btnGreen: { background: '#00e5a0', color: '#0f1117', border: 'none', borderRadius: 8, fontFamily: "'DM Sans', sans-serif", fontSize: 13, fontWeight: 600, padding: '10px 20px', cursor: 'pointer' },
   btnGhost: { background: 'transparent', border: '1.5px solid #2a2d35', color: '#888', borderRadius: 8, fontFamily: "'DM Sans', sans-serif", fontSize: 13, fontWeight: 500, padding: '9px 16px', cursor: 'pointer', transition: 'all 0.15s' },
-  procCard: { background: '#13151c', border: '1px solid #1e2128', borderRadius: 10, padding: '14px 18px', marginBottom: 10, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 },
-  addForm: { background: '#13151c', border: '1px solid #2a2d35', borderRadius: 12, padding: 24, marginTop: 16 },
-  uploadZone: { border: '1.5px dashed #2a2d35', borderRadius: 8, padding: '20px', textAlign: 'center', cursor: 'pointer', position: 'relative', transition: 'all 0.2s' },
-  errBox: { background: 'rgba(239,68,68,0.05)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 8, padding: '10px 14px', color: '#ef4444', fontSize: 12, marginTop: 8 },
+  card:     { background: '#13151c', border: '1px solid #1e2128', borderRadius: 10, padding: '14px 18px', marginBottom: 10 },
+  errBox:   { background: 'rgba(239,68,68,0.05)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 8, padding: '10px 14px', color: '#ef4444', fontSize: 12, marginTop: 8 },
+  uploadZone: { border: '1.5px dashed #2a2d35', borderRadius: 8, padding: 20, textAlign: 'center', cursor: 'pointer', position: 'relative', transition: 'all 0.2s' },
 };
 
-function focus(e) { e.target.style.borderColor = '#00e5a0'; }
-function blur(e)  { e.target.style.borderColor = '#1e2128'; }
+const focus = e => { e.target.style.borderColor = '#00e5a0'; };
+const blur  = e => { e.target.style.borderColor = '#1e2128'; };
 
-function SectionTitle({ children }) {
-  return <div style={S.secTitle}>{children}<div style={S.secLine} /></div>;
-}
-
-function Field({ label, help, children }) {
+function Sec({ title, children }) {
   return (
-    <div style={S.field}>
-      <label style={S.label}>{label}</label>
+    <div style={S.sec}>
+      <div style={S.secTitle}>{title}<div style={S.secLine} /></div>
       {children}
-      {help && <div style={S.help}>{help}</div>}
     </div>
   );
 }
-
-function PersonnelRow({ label, nameVal, phoneVal, onName, onPhone }) {
+function F({ label, help, children }) {
+  return <div style={S.field}><label style={S.label}>{label}</label>{children}{help && <div style={S.help}>{help}</div>}</div>;
+}
+function PersonnelRow({ label, nv, pv, onN, onP }) {
   return (
     <div style={S.grid2}>
-      <Field label={`${label} — Name`}>
-        <input style={S.input} value={nameVal} onChange={e => onName(e.target.value)} placeholder={`${label} full name`} onFocus={focus} onBlur={blur} />
-      </Field>
-      <Field label={`${label} — Phone`}>
-        <input style={S.input} value={phoneVal} onChange={e => onPhone(e.target.value)} placeholder="07xxx xxxxxx" onFocus={focus} onBlur={blur} />
-      </Field>
+      <F label={`${label} — Name`}><input style={S.input} value={nv} onChange={e => onN(e.target.value)} placeholder={`${label} full name`} onFocus={focus} onBlur={blur} /></F>
+      <F label={`${label} — Phone`}><input style={S.input} value={pv} onChange={e => onP(e.target.value)} placeholder="07xxx xxxxxx" onFocus={focus} onBlur={blur} /></F>
     </div>
   );
 }
 
-function ProfileTab({ profile, setProfile }) {
+// ── Profile Tab ──────────────────────────────────────────────
+function ProfileTab({ profile, setProfile, userId, onSaved }) {
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved]   = useState(false);
   const up = (k, v) => setProfile(p => ({ ...p, [k]: v }));
   const inp = (k, ph) => ({ style: S.input, value: profile[k] || '', onChange: e => up(k, e.target.value), placeholder: ph, onFocus: focus, onBlur: blur });
-  const ta = (k, ph, minH = 80) => ({ style: { ...S.textarea, minHeight: minH }, value: profile[k] || '', onChange: e => up(k, e.target.value), placeholder: ph, onFocus: focus, onBlur: blur });
+  const ta  = (k, ph, minH = 80) => ({ style: { ...S.textarea, minHeight: minH }, value: profile[k] || '', onChange: e => up(k, e.target.value), placeholder: ph, onFocus: focus, onBlur: blur });
+
+  const save = async () => {
+    setSaving(true);
+    await supabase.from('company_profiles').upsert({ user_id: userId, data: profile, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
+    setSaving(false);
+    setSaved(true);
+    onSaved(profile);
+    setTimeout(() => setSaved(false), 2000);
+  };
 
   return (
     <div>
       <div style={{ background: 'rgba(0,229,160,0.05)', border: '1px solid rgba(0,229,160,0.15)', borderRadius: 8, padding: '12px 16px', marginBottom: 24, fontSize: 13, color: '#888', lineHeight: 1.6 }}>
-        Everything here is saved locally in your browser and injected into every RAMS you generate — no data leaves your device except as part of the AI prompt.
+        Saved to your Supabase account. Injected into every RAMS you generate so output uses your real company details and procedures.
       </div>
 
-      <div style={{ marginBottom: 28 }}>
-        <SectionTitle>Company Details</SectionTitle>
+      <Sec title="Company Details">
         <div style={S.grid2}>
-          <Field label="Company Name"><input {...inp('companyName', 'e.g. Acme Construction Ltd')} /></Field>
-          <Field label="Company Address"><input {...inp('companyAddress', 'e.g. 12 Business Park, Birmingham B1 1AA')} /></Field>
+          <F label="Company Name"><input {...inp('companyName', 'e.g. Acme Construction Ltd')} /></F>
+          <F label="Company Address"><input {...inp('companyAddress', 'e.g. 12 Business Park, Birmingham B1 1AA')} /></F>
         </div>
-      </div>
+      </Sec>
 
-      <div style={{ marginBottom: 28 }}>
-        <SectionTitle>Site Personnel</SectionTitle>
-        <PersonnelRow label="Site Manager" nameVal={profile.siteManagerName || ''} phoneVal={profile.siteManagerPhone || ''} onName={v => up('siteManagerName', v)} onPhone={v => up('siteManagerPhone', v)} />
-        <PersonnelRow label="Supervisor" nameVal={profile.supervisorName || ''} phoneVal={profile.supervisorPhone || ''} onName={v => up('supervisorName', v)} onPhone={v => up('supervisorPhone', v)} />
-        <PersonnelRow label="First Aider" nameVal={profile.firstAiderName || ''} phoneVal={profile.firstAiderPhone || ''} onName={v => up('firstAiderName', v)} onPhone={v => up('firstAiderPhone', v)} />
-      </div>
+      <Sec title="Site Personnel">
+        <PersonnelRow label="Site Manager" nv={profile.siteManagerName || ''} pv={profile.siteManagerPhone || ''} onN={v => up('siteManagerName', v)} onP={v => up('siteManagerPhone', v)} />
+        <PersonnelRow label="Supervisor"   nv={profile.supervisorName   || ''} pv={profile.supervisorPhone   || ''} onN={v => up('supervisorName', v)}   onP={v => up('supervisorPhone', v)} />
+        <PersonnelRow label="First Aider"  nv={profile.firstAiderName   || ''} pv={profile.firstAiderPhone   || ''} onN={v => up('firstAiderName', v)}    onP={v => up('firstAiderPhone', v)} />
+      </Sec>
 
-      <div style={{ marginBottom: 28 }}>
-        <SectionTitle>Emergency Details</SectionTitle>
+      <Sec title="Emergency Details">
         <div style={S.grid2}>
-          <Field label="Emergency Assembly Point"><input {...inp('emergencyAssemblyPoint', 'e.g. Car park, north entrance')} /></Field>
-          <Field label="Nearest A&E Hospital"><input {...inp('nearestHospital', 'e.g. Birmingham City Hospital, Dudley Rd')} /></Field>
+          <F label="Emergency Assembly Point"><input {...inp('emergencyAssemblyPoint', 'e.g. Car park, north entrance')} /></F>
+          <F label="Nearest A&E Hospital"><input {...inp('nearestHospital', 'e.g. Birmingham City Hospital, Dudley Rd')} /></F>
         </div>
-      </div>
+      </Sec>
 
-      <div>
-        <SectionTitle>Management System</SectionTitle>
-        <Field label="Risk Matrix Definition" help="Leave blank to use the default 5×5 matrix. If your system uses a different matrix, describe it here.">
-          <textarea {...ta('riskMatrixDefinition', 'e.g. We use a 3×3 matrix. Likelihood: 1=Rare, 2=Possible, 3=Likely. Severity: 1=Minor, 2=Moderate, 3=Severe. Risk = L×S: Low=1-3, Medium=4-6, High=7-9.', 70)} />
-        </Field>
-        <Field label="Mandatory Controls" help="Controls that must appear in every RAMS regardless of task. The AI will include all of these.">
-          <textarea {...ta('mandatoryControls', 'e.g. All operatives must complete site induction INF-001 before commencing work. RAMS must be read and signed by all operatives. Site manager must carry out a daily brief before work starts...', 100)} />
-        </Field>
-        <Field label="Permit to Work Triggers" help="List which tasks require a PTW and which form applies.">
-          <textarea {...ta('ptwTriggers', 'e.g.\nHot works → PTW-HW-02\nConfined space entry → PTW-CS-01\nElectrical isolation → PTW-EL-03\nExcavation near services → PTW-EX-01', 100)} />
-        </Field>
-        <Field label="Document Reference Format" help="Format for RAMS reference numbers. Will be included in document header.">
+      <Sec title="Management System">
+        <F label="Risk Matrix Definition" help="Leave blank to use default 5×5. Describe your company matrix if different.">
+          <textarea {...ta('riskMatrixDefinition', 'e.g. We use a 3×3: L=1-3, M=4-6, H=7-9. Likelihood: 1=Rare 2=Possible 3=Likely. Severity: 1=Minor 2=Moderate 3=Severe.', 70)} />
+        </F>
+        <F label="Mandatory Controls" help="Must appear in every RAMS regardless of task.">
+          <textarea {...ta('mandatoryControls', 'e.g. All operatives must complete site induction INF-001 before commencing works...', 90)} />
+        </F>
+        <F label="Permit to Work Triggers">
+          <textarea {...ta('ptwTriggers', 'e.g.\nHot works → PTW-HW-02\nConfined space → PTW-CS-01\nElectrical isolation → PTW-EL-03', 90)} />
+        </F>
+        <F label="Document Reference Format" help="e.g. RA-{SITE}-{YYYY}-{NNN}">
           <input {...inp('docRefFormat', 'e.g. RA-{SITE}-{YYYY}-{NNN}')} />
-        </Field>
-        <Field label="Additional Management System Guidance">
-          <textarea {...ta('additionalGuidance', 'Any other company-specific requirements, standard clauses, approved suppliers, or guidance that must be reflected in every RAMS...', 100)} />
-        </Field>
-      </div>
+        </F>
+        <F label="Additional Management System Guidance">
+          <textarea {...ta('additionalGuidance', 'Any other company-specific requirements, standard clauses, or approved methods...', 90)} />
+        </F>
+      </Sec>
+
+      <button style={{ ...S.btnGreen, opacity: saving ? 0.6 : 1 }} onClick={save} disabled={saving}>
+        {saving ? 'Saving…' : saved ? '✓ Saved' : 'Save Profile'}
+      </button>
     </div>
   );
 }
 
-function ProcedureLibraryTab({ procedures, setProcedures }) {
-  const [adding, setAdding] = useState(false);
-  const [form, setForm] = useState({ title: '', code: '', category: '', text: '' });
+// ── Procedure Library Tab ────────────────────────────────────
+function ProceduresTab({ procedures, setProcedures, userId }) {
+  const [adding, setAdding]       = useState(false);
+  const [form, setForm]           = useState({ title: '', code: '', category: '', text: '' });
   const [extracting, setExtracting] = useState(false);
   const [extractErr, setExtractErr] = useState('');
   const [inputMode, setInputMode] = useState('upload');
+  const [saving, setSaving]       = useState(false);
   const fileRef = useRef();
 
-  const upForm = (k, v) => setForm(p => ({ ...p, [k]: v }));
+  const upF = (k, v) => setForm(p => ({ ...p, [k]: v }));
 
   const handleFile = async (e) => {
     const file = e.target.files[0];
@@ -149,22 +157,26 @@ function ProcedureLibraryTab({ procedures, setProcedures }) {
     setExtractErr('');
     try {
       const text = await extractTextFromFile(file);
-      upForm('text', text.slice(0, 50000));
       setForm(p => ({ ...p, text: text.slice(0, 50000), title: p.title || file.name.replace(/\.[^.]+$/, '') }));
-    } catch (err) {
-      setExtractErr(err.message);
-    } finally {
-      setExtracting(false);
-      e.target.value = '';
-    }
+    } catch (err) { setExtractErr(err.message); }
+    finally { setExtracting(false); e.target.value = ''; }
   };
 
-  const addProc = () => {
+  const addProc = async () => {
     if (!form.title.trim() || !form.text.trim()) return;
-    setProcedures(p => [...p, { ...form, id: Date.now().toString(), charCount: form.text.length, addedAt: new Date().toISOString() }]);
+    setSaving(true);
+    const row = { user_id: userId, title: form.title, code: form.code, category: form.category, text: form.text, char_count: form.text.length, file_name: form.title };
+    const { data, error } = await supabase.from('procedures').insert(row).select().single();
+    if (!error && data) setProcedures(prev => [...prev, data]);
+    setSaving(false);
     setForm({ title: '', code: '', category: '', text: '' });
     setAdding(false);
     setExtractErr('');
+  };
+
+  const del = async (id) => {
+    await supabase.from('procedures').delete().eq('id', id);
+    setProcedures(prev => prev.filter(p => p.id !== id));
   };
 
   const cancel = () => { setAdding(false); setForm({ title: '', code: '', category: '', text: '' }); setExtractErr(''); };
@@ -172,81 +184,69 @@ function ProcedureLibraryTab({ procedures, setProcedures }) {
   return (
     <div>
       <p style={{ fontSize: 13, color: '#888', lineHeight: 1.6, marginBottom: 20 }}>
-        Upload your company procedures. Relevant procedures are automatically matched to the task type and injected into the AI prompt — the output will comply with and reference them by document code.
+        Upload your company procedures. Relevant ones are matched to task type and injected into the AI prompt — output will comply with and reference them by document code.
       </p>
 
       {procedures.length === 0 && !adding && (
-        <div style={{ textAlign: 'center', padding: '32px 0', color: '#555', fontSize: 13, border: '1px dashed #1e2128', borderRadius: 10 }}>
+        <div style={{ textAlign: 'center', padding: '32px 0', color: '#555', fontSize: 13, border: '1px dashed #1e2128', borderRadius: 10, marginBottom: 16 }}>
           No procedures added yet.
         </div>
       )}
 
       {procedures.map(p => (
-        <div key={p.id} style={S.procCard}>
-          <div style={{ flex: 1, minWidth: 0 }}>
+        <div key={p.id} style={{ ...S.card, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+          <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
               {p.code && <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: '#00e5a0', letterSpacing: '0.06em', textTransform: 'uppercase' }}>{p.code}</span>}
               <span style={{ fontSize: 14, color: '#e8e8e4', fontWeight: 500 }}>{p.title}</span>
             </div>
             <div style={{ fontSize: 11, color: '#555' }}>
-              {CATEGORIES.find(c => c.value === p.category)?.label || 'All tasks'}
-              {' · '}{(p.charCount / 1000).toFixed(1)}k chars
-              {' · '}Added {new Date(p.addedAt).toLocaleDateString('en-GB')}
+              {CATEGORIES.find(c => c.value === p.category)?.label || 'All tasks'} · {((p.char_count || p.text?.length || 0) / 1000).toFixed(1)}k chars · Added {new Date(p.created_at).toLocaleDateString('en-GB')}
             </div>
           </div>
-          <button onClick={() => setProcedures(prev => prev.filter(x => x.id !== p.id))} style={{ background: 'none', border: 'none', color: '#555', cursor: 'pointer', padding: '4px 8px', borderRadius: 6, fontSize: 16, lineHeight: 1, flexShrink: 0 }} title="Remove">✕</button>
+          <button onClick={() => del(p.id)} style={{ background: 'none', border: 'none', color: '#555', cursor: 'pointer', padding: '4px 8px', fontSize: 16, lineHeight: 1, flexShrink: 0 }}>✕</button>
         </div>
       ))}
 
       {!adding ? (
         <button style={{ ...S.btnGhost, marginTop: 8 }} onClick={() => setAdding(true)}>+ Add Procedure</button>
       ) : (
-        <div style={S.addForm}>
+        <div style={{ background: '#13151c', border: '1px solid #2a2d35', borderRadius: 12, padding: 24, marginTop: 16 }}>
           <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: '#555', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 20 }}>New Procedure</div>
           <div style={S.grid2}>
-            <Field label="Document Title *">
-              <input style={S.input} value={form.title} onChange={e => upForm('title', e.target.value)} placeholder="e.g. Working at Height Procedure" onFocus={focus} onBlur={blur} />
-            </Field>
-            <Field label="Document Code">
-              <input style={S.input} value={form.code} onChange={e => upForm('code', e.target.value)} placeholder="e.g. SWP-WH-001" onFocus={focus} onBlur={blur} />
-            </Field>
+            <F label="Document Title *"><input style={S.input} value={form.title} onChange={e => upF('title', e.target.value)} placeholder="e.g. Working at Height Procedure" onFocus={focus} onBlur={blur} /></F>
+            <F label="Document Code"><input style={S.input} value={form.code} onChange={e => upF('code', e.target.value)} placeholder="e.g. SWP-WH-001" onFocus={focus} onBlur={blur} /></F>
           </div>
-          <Field label="Applies To">
-            <select style={S.select} value={form.category} onChange={e => upForm('category', e.target.value)}>
+          <F label="Applies To">
+            <select style={S.select} value={form.category} onChange={e => upF('category', e.target.value)}>
               {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
             </select>
-          </Field>
-
+          </F>
           <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
-            {['upload', 'paste'].map(mode => (
-              <button key={mode} style={{ ...S.btnGhost, fontSize: 12, padding: '7px 14px', ...(inputMode === mode ? { borderColor: '#00e5a0', color: '#00e5a0' } : {}) }} onClick={() => setInputMode(mode)}>
-                {mode === 'upload' ? 'Upload file' : 'Paste text'}
+            {['upload', 'paste'].map(m => (
+              <button key={m} style={{ ...S.btnGhost, fontSize: 12, padding: '7px 14px', ...(inputMode === m ? { borderColor: '#00e5a0', color: '#00e5a0' } : {}) }} onClick={() => setInputMode(m)}>
+                {m === 'upload' ? 'Upload file' : 'Paste text'}
               </button>
             ))}
           </div>
-
           {inputMode === 'upload' ? (
             <>
-              <div style={{ ...S.uploadZone, ...(extracting ? { borderColor: '#00e5a0' } : form.text ? { borderColor: '#2a2d35' } : {}) }} onClick={() => !extracting && fileRef.current?.click()}>
-                {extracting
-                  ? <span style={{ fontSize: 13, color: '#00e5a0' }}>Extracting text…</span>
-                  : form.text
-                  ? <span style={{ fontSize: 13, color: '#00e5a0' }}>✓ {(form.text.length / 1000).toFixed(1)}k chars extracted — click to replace</span>
-                  : <span style={{ fontSize: 13, color: '#555' }}>Click to upload .txt, .pdf, or .docx</span>
-                }
+              <div style={{ ...S.uploadZone, ...(extracting ? { borderColor: '#00e5a0' } : {}) }} onClick={() => !extracting && fileRef.current?.click()}>
+                {extracting ? <span style={{ fontSize: 13, color: '#00e5a0' }}>Extracting text…</span>
+                  : form.text ? <span style={{ fontSize: 13, color: '#00e5a0' }}>✓ {(form.text.length / 1000).toFixed(1)}k chars extracted — click to replace</span>
+                  : <span style={{ fontSize: 13, color: '#555' }}>Click to upload .txt, .pdf, or .docx</span>}
                 <input ref={fileRef} type="file" accept=".txt,.md,.pdf,.docx" onChange={handleFile} style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%', height: '100%' }} />
               </div>
               {extractErr && <div style={S.errBox}>{extractErr}</div>}
             </>
           ) : (
-            <Field label="Procedure Text *" help={`${form.text.length.toLocaleString()} / 50,000 chars`}>
-              <textarea style={{ ...S.textarea, minHeight: 160 }} value={form.text} onChange={e => upForm('text', e.target.value.slice(0, 50000))} placeholder="Paste your procedure text here…" onFocus={focus} onBlur={blur} />
-            </Field>
+            <F label="Procedure Text *" help={`${form.text.length.toLocaleString()} / 50,000 chars`}>
+              <textarea style={{ ...S.textarea, minHeight: 140 }} value={form.text} onChange={e => upF('text', e.target.value.slice(0, 50000))} placeholder="Paste procedure text here…" onFocus={focus} onBlur={blur} />
+            </F>
           )}
-
           <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
-            <button style={{ ...S.btnPrimary, opacity: (!form.title.trim() || !form.text.trim()) ? 0.4 : 1 }} onClick={addProc} disabled={!form.title.trim() || !form.text.trim()}>
-              Add to Library
+            <button style={{ ...S.btnGreen, opacity: (!form.title.trim() || !form.text.trim() || saving) ? 0.4 : 1 }} onClick={addProc} disabled={!form.title.trim() || !form.text.trim() || saving}>
+              {saving ? 'Saving…' : 'Add to Library'}
             </button>
             <button style={S.btnGhost} onClick={cancel}>Cancel</button>
           </div>
@@ -256,10 +256,116 @@ function ProcedureLibraryTab({ procedures, setProcedures }) {
   );
 }
 
-export default function SettingsModal({ onClose }) {
+// ── Template Tab ─────────────────────────────────────────────
+function TemplateTab({ userId, activeTemplate, setActiveTemplate }) {
+  const [uploading, setUploading] = useState(false);
+  const [sampDl, setSampDl]       = useState(false);
+  const [err, setErr]             = useState('');
+  const fileRef = useRef();
+
+  const upload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (!file.name.endsWith('.docx')) { setErr('Only .docx files are supported.'); return; }
+    setUploading(true);
+    setErr('');
+
+    const path = `${userId}/${Date.now()}-${file.name}`;
+
+    // Remove previous template file if exists
+    if (activeTemplate?.storage_path) {
+      await supabase.storage.from('templates').remove([activeTemplate.storage_path]);
+      await supabase.from('templates').delete().eq('user_id', userId);
+    }
+
+    const { error: uploadErr } = await supabase.storage.from('templates').upload(path, file);
+    if (uploadErr) { setErr(uploadErr.message); setUploading(false); return; }
+
+    const { data, error: dbErr } = await supabase.from('templates').insert({
+      user_id: userId, name: file.name, file_name: file.name, storage_path: path, is_active: true,
+    }).select().single();
+
+    if (dbErr) setErr(dbErr.message);
+    else setActiveTemplate(data);
+
+    setUploading(false);
+    e.target.value = '';
+  };
+
+  const remove = async () => {
+    if (!activeTemplate) return;
+    await supabase.storage.from('templates').remove([activeTemplate.storage_path]);
+    await supabase.from('templates').delete().eq('id', activeTemplate.id);
+    setActiveTemplate(null);
+  };
+
+  const sample = async () => {
+    setSampDl(true);
+    try { await downloadSampleTemplate(); } catch (e) { setErr(e.message); }
+    setSampDl(false);
+  };
+
+  return (
+    <div>
+      <p style={{ fontSize: 13, color: '#888', lineHeight: 1.6, marginBottom: 24 }}>
+        Upload a branded <strong style={{ color: '#c0c0b8' }}>.docx</strong> template. When a RAMS is generated, your data is compiled into it and downloaded as a Word document. Without a template, the standard PDF export is used instead.
+      </p>
+
+      {/* Download sample */}
+      <div style={{ background: 'rgba(0,229,160,0.04)', border: '1px solid rgba(0,229,160,0.15)', borderRadius: 10, padding: '16px 20px', marginBottom: 24 }}>
+        <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: '#00e5a0', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8 }}>Start from the sample template</div>
+        <p style={{ fontSize: 13, color: '#888', lineHeight: 1.5, marginBottom: 14 }}>
+          Download the sample, open it in Word, add your logo and branding, keep the green <code style={{ background: '#1e2128', padding: '1px 5px', borderRadius: 3, fontSize: 12 }}>{'{tags}'}</code> intact, then upload it below.
+        </p>
+        <button style={{ ...S.btnGhost, fontSize: 12 }} onClick={sample} disabled={sampDl}>
+          {sampDl ? 'Generating…' : '↓ Download Sample Template (.docx)'}
+        </button>
+      </div>
+
+      {/* Active template */}
+      {activeTemplate ? (
+        <div style={{ ...S.card, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+              <span style={{ fontSize: 18, lineHeight: 1 }}>📄</span>
+              <span style={{ fontSize: 14, color: '#e8e8e4', fontWeight: 500 }}>{activeTemplate.name}</span>
+              <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: '#00e5a0', background: 'rgba(0,229,160,0.08)', border: '1px solid rgba(0,229,160,0.2)', padding: '2px 7px', borderRadius: 3, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Active</span>
+            </div>
+            <div style={{ fontSize: 11, color: '#555' }}>Uploaded {new Date(activeTemplate.created_at).toLocaleDateString('en-GB')}</div>
+          </div>
+          <div style={{ display: 'flex', gap: 10, flexShrink: 0 }}>
+            <button style={{ ...S.btnGhost, fontSize: 12 }} onClick={() => fileRef.current?.click()} disabled={uploading}>Replace</button>
+            <button style={{ ...S.btnGhost, fontSize: 12, borderColor: 'rgba(239,68,68,0.3)', color: '#ef4444' }} onClick={remove}>Remove</button>
+          </div>
+        </div>
+      ) : (
+        <div style={{ ...S.uploadZone, ...(uploading ? { borderColor: '#00e5a0' } : {}) }} onClick={() => !uploading && fileRef.current?.click()}>
+          {uploading
+            ? <span style={{ fontSize: 13, color: '#00e5a0' }}>Uploading…</span>
+            : <>
+                <div style={{ fontSize: 28, marginBottom: 8 }}>📄</div>
+                <div style={{ fontSize: 13, color: '#c0c0b8', marginBottom: 4 }}>Upload your .docx template</div>
+                <div style={{ fontSize: 12, color: '#555' }}>Click to select — .docx files only</div>
+              </>
+          }
+        </div>
+      )}
+
+      <input ref={fileRef} type="file" accept=".docx" onChange={upload} style={{ display: 'none' }} />
+      {err && <div style={S.errBox}>{err}</div>}
+    </div>
+  );
+}
+
+// ── Main Modal ───────────────────────────────────────────────
+export default function SettingsModal({ onClose, user, profile, setProfile, procedures, setProcedures, activeTemplate, setActiveTemplate }) {
   const [tab, setTab] = useState('profile');
-  const [profile, setProfile] = useLocalStorage('sf_company_profile', DEFAULT_PROFILE);
-  const [procedures, setProcedures] = useLocalStorage('sf_procedures', []);
+
+  const tabs = [
+    { key: 'profile',    label: 'Company Profile' },
+    { key: 'procedures', label: `Procedure Library${procedures.length ? ` (${procedures.length})` : ''}` },
+    { key: 'template',   label: `RAMS Template${activeTemplate ? ' ✓' : ''}` },
+  ];
 
   return (
     <div style={S.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
@@ -272,20 +378,14 @@ export default function SettingsModal({ onClose }) {
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#555', cursor: 'pointer', fontSize: 22, lineHeight: 1, padding: 4 }}>×</button>
         </div>
 
-        <div style={S.tabs}>
-          {[
-            { key: 'profile', label: 'Company Profile' },
-            { key: 'procedures', label: `Procedure Library${procedures.length ? ` (${procedures.length})` : ''}` },
-          ].map(t => (
-            <button key={t.key} style={S.tab(tab === t.key)} onClick={() => setTab(t.key)}>{t.label}</button>
-          ))}
+        <div style={S.tabBar}>
+          {tabs.map(t => <button key={t.key} style={S.tab(tab === t.key)} onClick={() => setTab(t.key)}>{t.label}</button>)}
         </div>
 
         <div style={S.body}>
-          {tab === 'profile'
-            ? <ProfileTab profile={profile} setProfile={setProfile} />
-            : <ProcedureLibraryTab procedures={procedures} setProcedures={setProcedures} />
-          }
+          {tab === 'profile'    && <ProfileTab    profile={profile} setProfile={setProfile} userId={user.id} onSaved={setProfile} />}
+          {tab === 'procedures' && <ProceduresTab procedures={procedures} setProcedures={setProcedures} userId={user.id} />}
+          {tab === 'template'   && <TemplateTab   userId={user.id} activeTemplate={activeTemplate} setActiveTemplate={setActiveTemplate} />}
         </div>
       </div>
     </div>

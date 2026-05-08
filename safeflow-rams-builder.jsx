@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useRef, useCallback } from "react";
-import { useLocalStorage } from './lib/useLocalStorage';
+import { useState, useRef, useCallback, useEffect } from "react";
 import { DEFAULT_PROFILE, injectProfileIntoPrompt } from './lib/companyProfile';
 import { injectProceduresIntoPrompt } from './lib/procedureLibrary';
+import { supabase } from './lib/supabase';
 import SettingsModal from './components/SettingsModal';
 import CompliancePanel from './components/CompliancePanel';
+import AuthScreen from './components/AuthScreen';
 
 const TASK_TYPES = [
   "Excavation / Groundworks",
@@ -392,6 +393,17 @@ const styles = `
     color: #00e5a0;
   }
 
+  .export-btn.word {
+    background: transparent;
+    border-color: #2a2d35;
+    color: #c0c0b8;
+  }
+
+  .export-btn.word:hover {
+    border-color: #2b579a;
+    color: #4472c4;
+  }
+
   .export-btn.drive {
     background: transparent;
     border-color: #2a2d35;
@@ -717,7 +729,7 @@ function LoadingState({ step }) {
   );
 }
 
-function RamsDocument({ data, onReset, onExportPDF, onExportDrive, onExportOneDrive }) {
+function RamsDocument({ data, onReset, onExportPDF, onExportWord, onExportDrive, onExportOneDrive }) {
   const today = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' });
   const refNum = `SF-${Date.now().toString().slice(-6)}`;
 
@@ -735,6 +747,16 @@ function RamsDocument({ data, onReset, onExportPDF, onExportDrive, onExportOneDr
             </svg>
             Download PDF
           </button>
+          {onExportWord && (
+            <button className="export-btn word" onClick={onExportWord}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/>
+                <path d="M9 13l2 4 2-4"/>
+              </svg>
+              Download Word
+            </button>
+          )}
           <button className="export-btn drive" onClick={onExportDrive}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
@@ -912,9 +934,33 @@ export default function SafeFlowRAMS() {
   const [loadingStep, setLoadingStep] = useState(0);
   const [ramsData, setRamsData] = useState(null);
   const [error, setError] = useState('');
-  const [showSettings, setShowSettings] = useState(false);
-  const [profile] = useLocalStorage('sf_company_profile', DEFAULT_PROFILE);
-  const [procedures] = useLocalStorage('sf_procedures', []);
+  const [showSettings, setShowSettings]     = useState(false);
+  const [user, setUser]                     = useState(null);
+  const [authLoading, setAuthLoading]       = useState(true);
+  const [profile, setProfile]               = useState(DEFAULT_PROFILE);
+  const [procedures, setProcedures]         = useState([]);
+  const [activeTemplate, setActiveTemplate] = useState(null);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+      setAuthLoading(false);
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => {
+      setUser(session?.user ?? null);
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    supabase.from('company_profiles').select('data').eq('user_id', user.id).single()
+      .then(({ data }) => { if (data?.data) setProfile(p => ({ ...p, ...data.data })); });
+    supabase.from('procedures').select('*').eq('user_id', user.id).order('created_at')
+      .then(({ data }) => { if (data) setProcedures(data); });
+    supabase.from('templates').select('*').eq('user_id', user.id).eq('is_active', true).limit(1)
+      .then(({ data }) => { setActiveTemplate(data?.[0] || null); });
+  }, [user]);
 
   const addPhoto = useCallback((photo) => {
     setPhotos(prev => [...prev, photo]);
@@ -1034,6 +1080,14 @@ Produce at least 6 hazards. Use the 5×5 risk matrix: Likelihood (1=Rare, 2=Unli
       setLoadingStep(3);
       await new Promise(r => setTimeout(r, 400));
       setRamsData(parsed);
+      if (user) {
+        supabase.from('rams_documents').insert({
+          user_id: user.id,
+          task_type: parsed.taskType,
+          location: parsed.location,
+          data: parsed,
+        }).then(() => {});
+      }
     } catch (err) {
       clearInterval(stepInterval);
       setError(err.message || 'Something went wrong. Please try again.');
@@ -1180,6 +1234,21 @@ Produce at least 6 hazards. Use the 5×5 risk matrix: Likelihood (1=Rare, 2=Unli
     setTimeout(() => win.print(), 500);
   };
 
+  const handleExportWord = async () => {
+    if (!activeTemplate || !ramsData) return;
+    try {
+      const { data: fileData, error } = await supabase.storage.from('templates').download(activeTemplate.storage_path);
+      if (error) throw error;
+      const arrayBuffer = await fileData.arrayBuffer();
+      const { fillTemplate, downloadFile } = await import('./lib/templateFiller');
+      const refNum = `SF-${Date.now().toString().slice(-6)}`;
+      const filled = await fillTemplate(arrayBuffer, ramsData, profile, refNum);
+      downloadFile(filled, `RAMS-${ramsData.taskType.replace(/\W+/g, '-')}.docx`);
+    } catch (err) {
+      setError(`Word export failed: ${err.message}`);
+    }
+  };
+
   const handleExportDrive = () => {
     alert('Google Drive integration requires OAuth setup. In the full product, this saves directly to your connected Drive folder in your own template.');
   };
@@ -1189,6 +1258,21 @@ Produce at least 6 hazards. Use the 5×5 risk matrix: Likelihood (1=Rare, 2=Unli
   };
 
   const canGenerate = photos.length > 0 && (taskType && taskType !== 'Other (describe below)' || customTask.trim());
+
+  if (authLoading) {
+    return (
+      <>
+        <style>{styles}</style>
+        <div style={{ minHeight: '100vh', background: '#0f1117', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div className="loading-ring" style={{ width: 32, height: 32, borderWidth: 3 }} />
+        </div>
+      </>
+    );
+  }
+
+  if (!user) {
+    return <AuthScreen />;
+  }
 
   return (
     <>
@@ -1217,6 +1301,20 @@ Produce at least 6 hazards. Use the 5×5 risk matrix: Likelihood (1=Rare, 2=Unli
                 <circle cx="12" cy="12" r="3"/>
                 <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
               </svg>
+            </button>
+            <button
+              onClick={() => supabase.auth.signOut()}
+              title="Sign out"
+              style={{ background: 'none', border: '1.5px solid #2a2d35', borderRadius: 8, color: '#555', cursor: 'pointer', padding: '6px 10px', display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontFamily: "'DM Sans', sans-serif", transition: 'all 0.15s' }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = '#ef4444'; e.currentTarget.style.color = '#ef4444'; }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = '#2a2d35'; e.currentTarget.style.color = '#555'; }}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                <polyline points="16 17 21 12 16 7"/>
+                <line x1="21" y1="12" x2="9" y2="12"/>
+              </svg>
+              Sign out
             </button>
           </div>
         </div>
@@ -1295,6 +1393,7 @@ Produce at least 6 hazards. Use the 5×5 risk matrix: Likelihood (1=Rare, 2=Unli
               data={ramsData}
               onReset={() => { setRamsData(null); setPhotos([]); setTaskType(''); setCustomTask(''); setLocation(''); setAdditionalInfo(''); }}
               onExportPDF={handleExportPDF}
+              onExportWord={activeTemplate ? handleExportWord : null}
               onExportDrive={handleExportDrive}
               onExportOneDrive={handleExportOneDrive}
             />
@@ -1307,7 +1406,18 @@ Produce at least 6 hazards. Use the 5×5 risk matrix: Likelihood (1=Rare, 2=Unli
           </>
         )}
       </div>
-      {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
+      {showSettings && (
+        <SettingsModal
+          onClose={() => setShowSettings(false)}
+          user={user}
+          profile={profile}
+          setProfile={setProfile}
+          procedures={procedures}
+          setProcedures={setProcedures}
+          activeTemplate={activeTemplate}
+          setActiveTemplate={setActiveTemplate}
+        />
+      )}
     </>
   );
 }
