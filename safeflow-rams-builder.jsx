@@ -7,6 +7,7 @@ import { supabase } from './lib/supabase';
 import SettingsModal from './components/SettingsModal';
 import CompliancePanel from './components/CompliancePanel';
 import AuthScreen from './components/AuthScreen';
+import ClarifyingQuestions, { buildAnswersContext } from './components/ClarifyingQuestions';
 
 const TASK_TYPES = [
   "Excavation / Groundworks",
@@ -935,6 +936,7 @@ export default function SafeFlowRAMS() {
   const [ramsData, setRamsData] = useState(null);
   const [error, setError] = useState('');
   const [showSettings, setShowSettings]     = useState(false);
+  const [showClarifying, setShowClarifying] = useState(false);
   const [user, setUser]                     = useState(null);
   const [authLoading, setAuthLoading]       = useState(true);
   const [profile, setProfile]               = useState(DEFAULT_PROFILE);
@@ -970,14 +972,14 @@ export default function SafeFlowRAMS() {
     setPhotos(prev => prev.filter((_, i) => i !== index));
   }, []);
 
-  const buildPrompt = () => {
+  const buildPrompt = (answers) => {
     const task = taskType === 'Other (describe below)' ? customTask : taskType;
     return `You are an expert HSQE Manager with 15+ years of experience producing Risk Assessment and Method Statements (RAMS) for UK field contractors. You must produce a comprehensive, compliant RAMS document based on the site photos provided and the task description below.
 
 Task Type: ${task}
 ${location ? `Site Location: ${location}` : ''}
 ${additionalInfo ? `Additional Information: ${additionalInfo}` : ''}
-${injectProfileIntoPrompt(profile)}
+${buildAnswersContext(answers)}${injectProfileIntoPrompt(profile)}
 ${injectProceduresIntoPrompt(procedures, task)}
 
 Analyse the site photos carefully and identify all visible hazards, site conditions, environmental factors, and anything relevant to safe working.
@@ -1019,10 +1021,11 @@ Produce at least 6 hazards. Use the 5×5 risk matrix: Likelihood (1=Rare, 2=Unli
 
   const OPENAI_API_KEY = process.env.NEXT_PUBLIC_OPENAI_API_KEY;
 
-  const generateRAMS = async () => {
+  const generateRAMS = async (answers = {}) => {
     const task = taskType === 'Other (describe below)' ? customTask : taskType;
     if (!task || photos.length === 0) return;
 
+    setShowClarifying(false);
     setLoading(true);
     setError('');
     setLoadingStep(0);
@@ -1054,7 +1057,7 @@ Produce at least 6 hazards. Use the 5×5 risk matrix: Likelihood (1=Rare, 2=Unli
             role: 'user',
             content: [
               ...imageContents,
-              { type: 'text', text: buildPrompt() }
+              { type: 'text', text: buildPrompt(answers) }
             ]
           }]
         })
@@ -1374,12 +1377,22 @@ Produce at least 6 hazards. Use the 5×5 risk matrix: Likelihood (1=Rare, 2=Unli
               </div>
             </div>
 
-            <button className="generate-btn" onClick={generateRAMS} disabled={!canGenerate}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
-              </svg>
-              Generate RAMS Document
-            </button>
+            {!showClarifying && (
+              <button className="generate-btn" onClick={() => setShowClarifying(true)} disabled={!canGenerate}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+                </svg>
+                Generate RAMS Document
+              </button>
+            )}
+
+            {showClarifying && (
+              <ClarifyingQuestions
+                taskType={taskType === 'Other (describe below)' ? null : taskType}
+                onSubmit={(answers) => generateRAMS(answers)}
+                onBack={() => setShowClarifying(false)}
+              />
+            )}
 
             {error && <div className="error-box">⚠ {error}</div>}
           </>
@@ -1391,7 +1404,7 @@ Produce at least 6 hazards. Use the 5×5 risk matrix: Likelihood (1=Rare, 2=Unli
           <>
             <RamsDocument
               data={ramsData}
-              onReset={() => { setRamsData(null); setPhotos([]); setTaskType(''); setCustomTask(''); setLocation(''); setAdditionalInfo(''); }}
+              onReset={() => { setRamsData(null); setPhotos([]); setTaskType(''); setCustomTask(''); setLocation(''); setAdditionalInfo(''); setShowClarifying(false); }}
               onExportPDF={handleExportPDF}
               onExportWord={activeTemplate ? handleExportWord : null}
               onExportDrive={handleExportDrive}
@@ -1402,6 +1415,7 @@ Produce at least 6 hazards. Use the 5×5 risk matrix: Likelihood (1=Rare, 2=Unli
               profile={profile}
               procedures={procedures}
               apiKey={OPENAI_API_KEY}
+              onUpdateRams={setRamsData}
             />
           </>
         )}

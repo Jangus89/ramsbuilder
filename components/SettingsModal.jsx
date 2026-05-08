@@ -257,38 +257,157 @@ function ProceduresTab({ procedures, setProcedures, userId }) {
 }
 
 // ── Template Tab ─────────────────────────────────────────────
+const PLACEHOLDER_FIELDS = `{task_type} - Type of task/works
+{ref_number} - Document reference number
+{date} - Issue date
+{location} - Site location
+{company_name} - Company/contractor name
+{company_address} - Company address
+{site_manager_name} - Site manager name
+{site_manager_phone} - Site manager phone
+{supervisor_name} - Supervisor name
+{supervisor_phone} - Supervisor phone
+{first_aider_name} - First aider name
+{first_aider_phone} - First aider phone
+{review_date} - Document review date
+{scope_of_works} - Scope of works paragraph
+{site_observations} - Site observations paragraph
+{method_statement} - Method statement steps
+{welfare_arrangements} - Welfare arrangements
+{environmental_controls} - Environmental controls
+{coshh_assessment} - COSHH assessment
+{refuelling_procedure} - Refuelling procedure
+{emergency_arrangements} - Emergency arrangements
+{competencies} - Competencies required
+{#hazards}{hazard} | {those_at_risk} | {initial_risk} ({initial_l}x{initial_s}={initial_score}) | {controls} | {residual_risk} ({residual_l}x{residual_s}={residual_score}){/hazards} - Hazard table row loop
+{#ppe}{item}{/ppe} - PPE list loop
+{#training_requirements}{item}{/training_requirements} - Training list loop`;
+
+async function analyzeAndTagTemplate(arrayBuffer, apiKey) {
+  const mammoth = await import('mammoth');
+  const { value: text } = await mammoth.extractRawText({ arrayBuffer });
+  const excerpt = text.slice(0, 6000);
+
+  const prompt = `You are analyzing a Word document template to identify where RAMS data fields should be inserted.
+
+Here is the extracted text from the template:
+${excerpt}
+
+Available placeholder tags:
+${PLACEHOLDER_FIELDS}
+
+Identify text in the template that should be replaced with placeholder tags. Look for:
+- Labels like "Task:", "Project:", "Date:", "Location:" followed by blank content → replace the blank value with the placeholder
+- Blank table cells next to labels that match RAMS field names
+- Section headings (Scope, Method Statement, Hazards, PPE, etc.) followed by empty paragraphs or placeholder text like "Insert here"
+- Any existing placeholders already in the correct format (leave them unchanged)
+
+Return ONLY a JSON array of replacement rules (no markdown):
+[
+  { "find": "exact text from the template to search for", "replace": "replacement including placeholder tag" }
+]
+
+Rules:
+- "find" must be exact text that appears verbatim in the template
+- Only return confident matches — skip anything ambiguous
+- For blank cells, find a unique nearby label instead and return the label + placeholder together
+- Limit to 20 replacements maximum`;
+
+  const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+    body: JSON.stringify({ model: 'gpt-4o', max_tokens: 1500, messages: [{ role: 'user', content: prompt }] }),
+  });
+  const data = await resp.json();
+  if (data.error) throw new Error(data.error.message);
+  const raw = data.choices?.[0]?.message?.content || '[]';
+  const clean = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+  return JSON.parse(clean);
+}
+
+function applyReplacementsToXml(xml, replacements) {
+  let result = xml;
+  let applied = 0;
+  for (const { find, replace } of replacements) {
+    const encoded = find
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+    if (result.includes(encoded)) {
+      result = result.split(encoded).join(replace);
+      applied++;
+    } else if (result.includes(find)) {
+      result = result.split(find).join(replace);
+      applied++;
+    }
+  }
+  return { xml: result, applied };
+}
+
 function TemplateTab({ userId, activeTemplate, setActiveTemplate }) {
-  const [uploading, setUploading] = useState(false);
+  const [phase, setPhase]         = useState('idle'); // idle | uploading | analysing | done
   const [sampDl, setSampDl]       = useState(false);
   const [err, setErr]             = useState('');
+  const [tagCount, setTagCount]   = useState(0);
   const fileRef = useRef();
+
+  const apiKey = process.env.NEXT_PUBLIC_OPENAI_API_KEY;
 
   const upload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
     if (!file.name.endsWith('.docx')) { setErr('Only .docx files are supported.'); return; }
-    setUploading(true);
     setErr('');
+    setTagCount(0);
 
-    const path = `${userId}/${Date.now()}-${file.name}`;
+    // Read file
+    const arrayBuffer = await file.arrayBuffer();
 
-    // Remove previous template file if exists
+    // Remove previous template
     if (activeTemplate?.storage_path) {
       await supabase.storage.from('templates').remove([activeTemplate.storage_path]);
       await supabase.from('templates').delete().eq('user_id', userId);
+      setActiveTemplate(null);
     }
 
-    const { error: uploadErr } = await supabase.storage.from('templates').upload(path, file);
-    if (uploadErr) { setErr(uploadErr.message); setUploading(false); return; }
+    let processedBuffer = arrayBuffer;
+    let detected = 0;
+
+    // AI analysis if API key available
+    if (apiKey) {
+      setPhase('analysing');
+      try {
+        const replacements = await analyzeAndTagTemplate(arrayBuffer, apiKey);
+        if (replacements.length > 0) {
+          const PizZip = (await import('pizzip')).default;
+          const zip = new PizZip(arrayBuffer);
+          const xmlFile = zip.file('word/document.xml');
+          if (xmlFile) {
+            const { xml: tagged, applied } = applyReplacementsToXml(xmlFile.asText(), replacements);
+            zip.file('word/document.xml', tagged);
+            processedBuffer = zip.generate({ type: 'arraybuffer' });
+            detected = applied;
+          }
+        }
+      } catch {
+        // Non-fatal — upload the original if analysis fails
+      }
+    }
+
+    setPhase('uploading');
+    const path = `${userId}/${Date.now()}-${file.name}`;
+    const blob = new Blob([processedBuffer], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+    const { error: uploadErr } = await supabase.storage.from('templates').upload(path, blob);
+    if (uploadErr) { setErr(uploadErr.message); setPhase('idle'); return; }
 
     const { data, error: dbErr } = await supabase.from('templates').insert({
-      user_id: userId, name: file.name, file_name: file.name, storage_path: path, is_active: true,
+      user_id: userId, name: file.name, file_name: file.name, storage_path: path, is_active: true, tagged_fields: detected,
     }).select().single();
 
-    if (dbErr) setErr(dbErr.message);
-    else setActiveTemplate(data);
-
-    setUploading(false);
+    if (dbErr) { setErr(dbErr.message); setPhase('idle'); return; }
+    setActiveTemplate(data);
+    setTagCount(detected);
+    setPhase('done');
     e.target.value = '';
   };
 
@@ -297,6 +416,8 @@ function TemplateTab({ userId, activeTemplate, setActiveTemplate }) {
     await supabase.storage.from('templates').remove([activeTemplate.storage_path]);
     await supabase.from('templates').delete().eq('id', activeTemplate.id);
     setActiveTemplate(null);
+    setPhase('idle');
+    setTagCount(0);
   };
 
   const sample = async () => {
@@ -305,17 +426,30 @@ function TemplateTab({ userId, activeTemplate, setActiveTemplate }) {
     setSampDl(false);
   };
 
+  const isProcessing = phase === 'uploading' || phase === 'analysing';
+  const phaseLabel = phase === 'analysing' ? 'AI analysing template…' : 'Uploading…';
+
   return (
     <div>
-      <p style={{ fontSize: 13, color: '#888', lineHeight: 1.6, marginBottom: 24 }}>
-        Upload a branded <strong style={{ color: '#c0c0b8' }}>.docx</strong> template. When a RAMS is generated, your data is compiled into it and downloaded as a Word document. Without a template, the standard PDF export is used instead.
+      <p style={{ fontSize: 13, color: '#888', lineHeight: 1.6, marginBottom: 20 }}>
+        Upload any branded <strong style={{ color: '#c0c0b8' }}>.docx</strong> template — AI automatically detects where RAMS fields should go and injects the placeholder tags. No manual editing required.
       </p>
 
+      {/* AI feature callout */}
+      <div style={{ background: 'rgba(0,229,160,0.04)', border: '1px solid rgba(0,229,160,0.12)', borderRadius: 10, padding: '14px 18px', marginBottom: 20 }}>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: '#00e5a0', letterSpacing: '0.08em', textTransform: 'uppercase', marginTop: 1, flexShrink: 0 }}>AI tagging</div>
+          <p style={{ fontSize: 13, color: '#888', lineHeight: 1.5, margin: 0 }}>
+            When you upload, AI reads your template, identifies where each RAMS section belongs, and inserts <code style={{ background: '#1e2128', padding: '1px 5px', borderRadius: 3, fontSize: 11 }}>{'{placeholders}'}</code> automatically. Or use the sample template below as a starting point.
+          </p>
+        </div>
+      </div>
+
       {/* Download sample */}
-      <div style={{ background: 'rgba(0,229,160,0.04)', border: '1px solid rgba(0,229,160,0.15)', borderRadius: 10, padding: '16px 20px', marginBottom: 24 }}>
-        <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: '#00e5a0', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8 }}>Start from the sample template</div>
-        <p style={{ fontSize: 13, color: '#888', lineHeight: 1.5, marginBottom: 14 }}>
-          Download the sample, open it in Word, add your logo and branding, keep the green <code style={{ background: '#1e2128', padding: '1px 5px', borderRadius: 3, fontSize: 12 }}>{'{tags}'}</code> intact, then upload it below.
+      <div style={{ ...S.card, marginBottom: 20 }}>
+        <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: '#555', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8 }}>Start from the sample template</div>
+        <p style={{ fontSize: 13, color: '#888', lineHeight: 1.5, marginBottom: 12 }}>
+          Pre-tagged with all fields. Open in Word, add your logo and branding — placeholders are already in place.
         </p>
         <button style={{ ...S.btnGhost, fontSize: 12 }} onClick={sample} disabled={sampDl}>
           {sampDl ? 'Generating…' : '↓ Download Sample Template (.docx)'}
@@ -324,30 +458,49 @@ function TemplateTab({ userId, activeTemplate, setActiveTemplate }) {
 
       {/* Active template */}
       {activeTemplate ? (
-        <div style={{ ...S.card, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-              <span style={{ fontSize: 18, lineHeight: 1 }}>📄</span>
-              <span style={{ fontSize: 14, color: '#e8e8e4', fontWeight: 500 }}>{activeTemplate.name}</span>
-              <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: '#00e5a0', background: 'rgba(0,229,160,0.08)', border: '1px solid rgba(0,229,160,0.2)', padding: '2px 7px', borderRadius: 3, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Active</span>
+        <div style={{ ...S.card, marginBottom: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: '#00e5a0', background: 'rgba(0,229,160,0.08)', border: '1px solid rgba(0,229,160,0.2)', padding: '2px 7px', borderRadius: 3, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Active</span>
+                <span style={{ fontSize: 14, color: '#e8e8e4', fontWeight: 500 }}>{activeTemplate.name}</span>
+              </div>
+              <div style={{ fontSize: 11, color: '#555' }}>
+                Uploaded {new Date(activeTemplate.created_at).toLocaleDateString('en-GB')}
+                {(activeTemplate.tagged_fields || tagCount) > 0 && (
+                  <span style={{ marginLeft: 10, color: '#00e5a0' }}>· AI tagged {activeTemplate.tagged_fields || tagCount} field{(activeTemplate.tagged_fields || tagCount) !== 1 ? 's' : ''}</span>
+                )}
+              </div>
+              {phase === 'done' && tagCount === 0 && (
+                <div style={{ fontSize: 11, color: '#f59e0b', marginTop: 6 }}>
+                  No fields auto-detected. If the Word doc exports blank, try the sample template instead.
+                </div>
+              )}
             </div>
-            <div style={{ fontSize: 11, color: '#555' }}>Uploaded {new Date(activeTemplate.created_at).toLocaleDateString('en-GB')}</div>
-          </div>
-          <div style={{ display: 'flex', gap: 10, flexShrink: 0 }}>
-            <button style={{ ...S.btnGhost, fontSize: 12 }} onClick={() => fileRef.current?.click()} disabled={uploading}>Replace</button>
-            <button style={{ ...S.btnGhost, fontSize: 12, borderColor: 'rgba(239,68,68,0.3)', color: '#ef4444' }} onClick={remove}>Remove</button>
+            <div style={{ display: 'flex', gap: 10, flexShrink: 0 }}>
+              <button style={{ ...S.btnGhost, fontSize: 12 }} onClick={() => !isProcessing && fileRef.current?.click()} disabled={isProcessing}>Replace</button>
+              <button style={{ ...S.btnGhost, fontSize: 12, borderColor: 'rgba(239,68,68,0.3)', color: '#ef4444' }} onClick={remove}>Remove</button>
+            </div>
           </div>
         </div>
       ) : (
-        <div style={{ ...S.uploadZone, ...(uploading ? { borderColor: '#00e5a0' } : {}) }} onClick={() => !uploading && fileRef.current?.click()}>
-          {uploading
-            ? <span style={{ fontSize: 13, color: '#00e5a0' }}>Uploading…</span>
-            : <>
-                <div style={{ fontSize: 28, marginBottom: 8 }}>📄</div>
-                <div style={{ fontSize: 13, color: '#c0c0b8', marginBottom: 4 }}>Upload your .docx template</div>
-                <div style={{ fontSize: 12, color: '#555' }}>Click to select — .docx files only</div>
-              </>
-          }
+        <div
+          style={{ ...S.uploadZone, ...(isProcessing ? { borderColor: '#00e5a0' } : {}) }}
+          onClick={() => !isProcessing && fileRef.current?.click()}
+        >
+          {isProcessing ? (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
+              <div style={{ width: 20, height: 20, border: '2px solid #1e2128', borderTopColor: '#00e5a0', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+              <span style={{ fontSize: 13, color: '#00e5a0' }}>{phaseLabel}</span>
+              {phase === 'analysing' && <span style={{ fontSize: 11, color: '#555' }}>Identifying field locations…</span>}
+            </div>
+          ) : (
+            <>
+              <div style={{ fontSize: 28, marginBottom: 8 }}>📄</div>
+              <div style={{ fontSize: 13, color: '#c0c0b8', marginBottom: 4 }}>Upload your branded .docx template</div>
+              <div style={{ fontSize: 12, color: '#555' }}>AI will auto-tag it · .docx files only</div>
+            </>
+          )}
         </div>
       )}
 
