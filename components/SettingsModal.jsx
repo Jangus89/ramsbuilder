@@ -1,9 +1,10 @@
 'use client';
 import { useState, useRef, useEffect } from 'react';
-import { supabase } from '../lib/supabase';
+import { isSupabaseConfigured, supabase } from '../lib/supabase';
 import { DEFAULT_PROFILE } from '../lib/companyProfile';
 import { extractTextFromFile } from '../lib/procedureLibrary';
 import { downloadSampleTemplate } from '../lib/sampleTemplate';
+import { callOpenAIChat, parseJsonResponse } from '../lib/openaiClient';
 
 const CATEGORIES = [
   { value: '', label: 'All tasks' },
@@ -80,7 +81,9 @@ function ProfileTab({ profile, setProfile, userId, onSaved }) {
 
   const save = async () => {
     setSaving(true);
-    await supabase.from('company_profiles').upsert({ user_id: userId, data: profile, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
+    if (isSupabaseConfigured) {
+      await supabase.from('company_profiles').upsert({ user_id: userId, data: profile, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
+    }
     setSaving(false);
     setSaved(true);
     onSaved(profile);
@@ -166,8 +169,12 @@ function ProceduresTab({ procedures, setProcedures, userId }) {
     if (!form.title.trim() || !form.text.trim()) return;
     setSaving(true);
     const row = { user_id: userId, title: form.title, code: form.code, category: form.category, text: form.text, char_count: form.text.length, file_name: form.title };
-    const { data, error } = await supabase.from('procedures').insert(row).select().single();
-    if (!error && data) setProcedures(prev => [...prev, data]);
+    if (isSupabaseConfigured) {
+      const { data, error } = await supabase.from('procedures').insert(row).select().single();
+      if (!error && data) setProcedures(prev => [...prev, data]);
+    } else {
+      setProcedures(prev => [...prev, { ...row, id: `local-${Date.now()}`, created_at: new Date().toISOString() }]);
+    }
     setSaving(false);
     setForm({ title: '', code: '', category: '', text: '' });
     setAdding(false);
@@ -175,7 +182,9 @@ function ProceduresTab({ procedures, setProcedures, userId }) {
   };
 
   const del = async (id) => {
-    await supabase.from('procedures').delete().eq('id', id);
+    if (isSupabaseConfigured) {
+      await supabase.from('procedures').delete().eq('id', id);
+    }
     setProcedures(prev => prev.filter(p => p.id !== id));
   };
 
@@ -283,7 +292,7 @@ const PLACEHOLDER_FIELDS = `{task_type} - Type of task/works
 {#ppe}{item}{/ppe} - PPE list loop
 {#training_requirements}{item}{/training_requirements} - Training list loop`;
 
-async function analyzeAndTagTemplate(arrayBuffer, apiKey) {
+async function analyzeAndTagTemplate(arrayBuffer) {
   const mammoth = await import('mammoth');
   const { value: text } = await mammoth.extractRawText({ arrayBuffer });
   const excerpt = text.slice(0, 6000);
@@ -313,16 +322,9 @@ Rules:
 - For blank cells, find a unique nearby label instead and return the label + placeholder together
 - Limit to 20 replacements maximum`;
 
-  const resp = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-    body: JSON.stringify({ model: 'gpt-4o', max_tokens: 1500, messages: [{ role: 'user', content: prompt }] }),
-  });
-  const data = await resp.json();
-  if (data.error) throw new Error(data.error.message);
+  const data = await callOpenAIChat({ model: 'gpt-4o', max_tokens: 1500, messages: [{ role: 'user', content: prompt }] });
   const raw = data.choices?.[0]?.message?.content || '[]';
-  const clean = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-  return JSON.parse(clean);
+  return parseJsonResponse(raw, 'Could not read the template tagging response.');
 }
 
 function applyReplacementsToXml(xml, replacements) {
@@ -351,11 +353,14 @@ function TemplateTab({ userId, activeTemplate, setActiveTemplate }) {
   const [tagCount, setTagCount]   = useState(0);
   const fileRef = useRef();
 
-  const apiKey = process.env.NEXT_PUBLIC_OPENAI_API_KEY;
-
   const upload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
+    if (!isSupabaseConfigured) {
+      setErr('Template upload requires Supabase storage. Use the app without a template, or configure Supabase to enable this feature.');
+      e.target.value = '';
+      return;
+    }
     if (!file.name.endsWith('.docx')) { setErr('Only .docx files are supported.'); return; }
     setErr('');
     setTagCount(0);
@@ -373,25 +378,22 @@ function TemplateTab({ userId, activeTemplate, setActiveTemplate }) {
     let processedBuffer = arrayBuffer;
     let detected = 0;
 
-    // AI analysis if API key available
-    if (apiKey) {
-      setPhase('analysing');
-      try {
-        const replacements = await analyzeAndTagTemplate(arrayBuffer, apiKey);
-        if (replacements.length > 0) {
-          const PizZip = (await import('pizzip')).default;
-          const zip = new PizZip(arrayBuffer);
-          const xmlFile = zip.file('word/document.xml');
-          if (xmlFile) {
-            const { xml: tagged, applied } = applyReplacementsToXml(xmlFile.asText(), replacements);
-            zip.file('word/document.xml', tagged);
-            processedBuffer = zip.generate({ type: 'arraybuffer' });
-            detected = applied;
-          }
+    setPhase('analysing');
+    try {
+      const replacements = await analyzeAndTagTemplate(arrayBuffer);
+      if (replacements.length > 0) {
+        const PizZip = (await import('pizzip')).default;
+        const zip = new PizZip(arrayBuffer);
+        const xmlFile = zip.file('word/document.xml');
+        if (xmlFile) {
+          const { xml: tagged, applied } = applyReplacementsToXml(xmlFile.asText(), replacements);
+          zip.file('word/document.xml', tagged);
+          processedBuffer = zip.generate({ type: 'arraybuffer' });
+          detected = applied;
         }
-      } catch {
-        // Non-fatal — upload the original if analysis fails
       }
+    } catch {
+      // Non-fatal — upload the original if analysis fails.
     }
 
     setPhase('uploading');
@@ -413,6 +415,12 @@ function TemplateTab({ userId, activeTemplate, setActiveTemplate }) {
 
   const remove = async () => {
     if (!activeTemplate) return;
+    if (!isSupabaseConfigured) {
+      setActiveTemplate(null);
+      setPhase('idle');
+      setTagCount(0);
+      return;
+    }
     await supabase.storage.from('templates').remove([activeTemplate.storage_path]);
     await supabase.from('templates').delete().eq('id', activeTemplate.id);
     setActiveTemplate(null);

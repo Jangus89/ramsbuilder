@@ -1,0 +1,82 @@
+{
+  "generatedAt": "2026-05-08T13:53:31.420Z",
+  "taskType": "Excavation / Groundworks",
+  "location": "Residential access road, Bristol BS3",
+  "taskDescription": "Excavate a short trench across an access road to expose and repair a damaged duct, then reinstate granular sub-base using a compact excavator, dumper and vibrating plate compactor. Maintain pedestrian access and protect nearby parked vehicles.",
+  "additionalInfo": "Photos show mobile plant operating close to a trench and existing pipeline/services. Assume unknown buried utilities may be present until proved otherwise. Works are in a live residential area with pedestrian and vehicle interface, reversing plant, spoil handling, refuelling, dust/noise, and compacting machinery.",
+  "answers": {
+    "issues": [
+      "Unknown underground services",
+      "Mobile plant movements",
+      "Machinery/work equipment",
+      "Pedestrian interface",
+      "Live access road"
+    ],
+    "other": "Check for overhead restrictions and ensure a banksman controls reversing plant."
+  },
+  "imagePaths": [
+    "test-outputs/mobile-plant/images/excavator-trench.jpg",
+    "test-outputs/mobile-plant/images/pipeline-trench.jpg",
+    "test-outputs/mobile-plant/images/mobile-plant-grading.jpg"
+  ],
+  "detectedCriticalRules": [
+    {
+      "id": "ground-disturbance-services",
+      "title": "Ground Disturbance / Underground Services"
+    },
+    {
+      "id": "live-traffic-highways",
+      "title": "Live Traffic / Highway Interface"
+    },
+    {
+      "id": "public-interface",
+      "title": "Public Interface"
+    },
+    {
+      "id": "overhead-services",
+      "title": "Overhead Services"
+    },
+    {
+      "id": "silica-dust",
+      "title": "Silica / Dust"
+    },
+    {
+      "id": "noise-vibration",
+      "title": "Noise / Vibration"
+    },
+    {
+      "id": "coshh-substances",
+      "title": "COSHH Substances"
+    },
+    {
+      "id": "plant-pedestrian-interface",
+      "title": "Plant / Pedestrian Interface"
+    },
+    {
+      "id": "machinery-work-equipment",
+      "title": "Machinery / Work Equipment"
+    },
+    {
+      "id": "mobile-plant",
+      "title": "Mobile Plant"
+    },
+    {
+      "id": "excavation-collapse",
+      "title": "Excavation Collapse / Ground Instability"
+    },
+    {
+      "id": "environmental-spill",
+      "title": "Environmental Spill / Pollution"
+    },
+    {
+      "id": "weather-exposure",
+      "title": "Weather / Temperature Exposure"
+    }
+  ],
+  "prompt": "You are an expert HSQE Manager with 15+ years of experience producing Risk Assessment and Method Statements (RAMS) for UK field contractors. You must produce a comprehensive, compliant RAMS document based on the site photos provided and the task description below.\n\nTask Type: Excavation / Groundworks\nTask Description: Excavate a short trench across an access road to expose and repair a damaged duct, then reinstate granular sub-base using a compact excavator, dumper and vibrating plate compactor. Maintain pedestrian access and protect nearby parked vehicles.\nSite Location: Residential access road, Bristol BS3\nAdditional Information: Photos show mobile plant operating close to a trench and existing pipeline/services. Assume unknown buried utilities may be present until proved otherwise. Works are in a live residential area with pedestrian and vehicle interface, reversing plant, spoil handling, refuelling, dust/noise, and compacting machinery.\nClarifying Answers: {\"issues\":[\"Unknown underground services\",\"Mobile plant movements\",\"Machinery/work equipment\",\"Pedestrian interface\",\"Live access road\"],\"other\":\"Check for overhead restrictions and ensure a banksman controls reversing plant.\"}\n\n\nCRITICAL RISK REQUIREMENTS - these are non-negotiable. The RAMS must include a specific hazard entry or clearly equivalent controls for every matched rule below:\n- Ground Disturbance / Underground Services\n  Mandatory hazard: Underground services strike during ground disturbance, saw cutting, breaking out, coring, drilling or excavation.\n  Mandatory controls:\n  - Review statutory utility plans and site service drawings before works.\n  - Complete CAT and Genny scan by a competent person and mark detected services.\n  - Use permit to dig/cut where required by site rules or client procedures.\n  - Use trial holes/hand digging near suspected services and maintain exclusion zones.\n  - Stop work and escalate if unidentified services, ducts, covers or warning tape are found.\n  - Brief operatives on emergency service strike procedure.\n\n- Live Traffic / Highway Interface\n  Mandatory hazard: Vehicle incursion and interface with live traffic during highway or road works.\n  Mandatory controls:\n  - Implement suitable temporary traffic management before works start.\n  - Use cones, barriers, signs and pedestrian segregation appropriate to the road environment.\n  - Maintain safe access/egress and avoid operatives stepping into live lanes.\n  - Use competent traffic management operatives where required.\n  - Wear high-visibility clothing and maintain work zone lighting/visibility.\n\n- Public Interface\n  Mandatory hazard: Members of the public entering or being affected by the work area.\n  Mandatory controls:\n  - Segregate the work area with barriers, signage and controlled access points.\n  - Maintain safe pedestrian routes and consider vulnerable persons.\n  - Use a marshal/banksman where public interface cannot be fully segregated.\n  - Plan noisy, dusty or disruptive tasks to reduce public exposure.\n\n- Overhead Services\n  Mandatory hazard: Contact or arcing from overhead services.\n  Mandatory controls:\n  - Identify overhead services and confirm exclusion distances before work.\n  - Use goalposts, height restrictors and plant movement controls where required.\n  - Brief plant operators and use a spotter when operating near overhead services.\n  - Consult utility owner where safe distances cannot be assured.\n\n- Silica / Dust\n  Mandatory hazard: Respirable crystalline silica and nuisance dust exposure.\n  Mandatory controls:\n  - Use water suppression or on-tool extraction at source.\n  - Use suitable RPE with face-fit testing where required.\n  - Segregate dusty work and prevent dry sweeping.\n  - Clean down using wet methods or suitable vacuum equipment.\n\n- Noise / Vibration\n  Mandatory hazard: Noise-induced hearing damage and hand-arm vibration exposure.\n  Mandatory controls:\n  - Assess HAVS and noise exposure and limit trigger time.\n  - Use low-vibration maintained tools and rotate tasks.\n  - Provide hearing protection zones where required.\n  - Record exposure and brief operatives on symptoms/reporting.\n\n- COSHH Substances\n  Mandatory hazard: Hazardous substance exposure or incorrect storage/use.\n  Mandatory controls:\n  - Review SDS/COSHH assessments before use.\n  - Control exposure routes with PPE, ventilation and hygiene.\n  - Store substances securely and segregate incompatibles.\n  - Provide spill response and disposal arrangements.\n\n- Plant / Pedestrian Interface\n  Mandatory hazard: Collision or crush injury from plant and pedestrian interface.\n  Mandatory controls:\n  - Segregate plant and pedestrians with exclusion zones.\n  - Use banksman/reversing controls where required.\n  - Complete plant pre-use checks and use competent operators.\n  - Maintain visibility, alarms, beacons and seatbelt use.\n\n- Machinery / Work Equipment\n  Mandatory hazard: Entanglement, contact, ejection, cuts, crushing or other injury from machinery and powered work equipment.\n  Mandatory controls:\n  - Use suitable PUWER-compliant equipment for the task and environment.\n  - Complete pre-use checks and remove defective equipment from service.\n  - Keep guards, handles, emergency stops and safety devices in place and functional.\n  - Use competent, briefed operatives and follow manufacturer instructions.\n  - Control loose clothing, cables, hoses, kickback, flying debris and exclusion zones.\n\n- Mobile Plant\n  Mandatory hazard: Collision, overturning, crush injury or property damage from mobile plant operations.\n  Mandatory controls:\n  - Use competent authorised operators and inspected plant only.\n  - Segregate mobile plant from workers, pedestrians, public and live traffic.\n  - Use banksman, exclusion zones and clear communication where visibility or reversing is restricted.\n  - Confirm ground conditions, gradients, edges, overhead restrictions and operating routes.\n  - Maintain seatbelt use, beacons, alarms, mirrors/cameras and speed controls.\n\n- Excavation Collapse / Ground Instability\n  Mandatory hazard: Excavation collapse, falls into excavation or unstable ground conditions.\n  Mandatory controls:\n  - Assess ground conditions and use battering, stepping or shoring as required.\n  - Keep spoil, plant and materials away from excavation edges.\n  - Provide edge protection and safe access/egress.\n  - Inspect excavations after weather, vibration or change in conditions.\n\n- Environmental Spill / Pollution\n  Mandatory hazard: Fuel, oil or material release causing environmental harm.\n  Mandatory controls:\n  - Use spill kits, drip trays and designated refuelling areas.\n  - Protect drains and watercourses before work.\n  - Store fuel/chemicals securely and away from ignition/drainage routes.\n  - Escalate and clean spills using approved procedure.\n\n- Weather / Temperature Exposure\n  Mandatory hazard: Adverse weather affecting worker health, visibility or site conditions.\n  Mandatory controls:\n  - Monitor weather and stop work when conditions become unsafe.\n  - Control slips, poor visibility, heat/cold stress and wind exposure.\n  - Provide lighting, hydration, rest breaks and suitable clothing as required.\n\nRELEVANT HSE GUIDANCE (select the most applicable for the references field):\n- HSG47: Avoiding danger from underground services: https://www.hse.gov.uk/pubns/books/hsg47.htm\n- HSG150: Health and safety in construction: https://www.hse.gov.uk/pubns/books/hsg150.htm\n- Construction health and safety: https://www.hse.gov.uk/construction/index.htm\n- COSHH: https://www.hse.gov.uk/coshh/index.htm\n- RIDDOR: https://www.hse.gov.uk/riddor/index.htm\n- Risk Assessment: https://www.hse.gov.uk/pubns/raindex.htm\n- Work Related Upper Limb Disorders (WRULD): https://www.hse.gov.uk/pubns/wruldex.htm\n- First Aid at work: https://www.hse.gov.uk/pubns/firindex.htm\n- COSHH Essentials - advice sheets: https://www.hse.gov.uk/coshh/essentials/direct-advice/index.htm\n- Successful health and safety management (HSG65): https://www.hse.gov.uk/pubns/books/hsg65.htm\n- HSG60: Upper limb disorders in the workplace: https://www.hse.gov.uk/pubns/books/hsg60.htm\n- HSG97: A step by step guide to COSHH assessment: https://www.hse.gov.uk/pubns/books/hsg97.htm\n- HSG141: Electrical safety on construction sites: https://www.hse.gov.uk/pubns/books/hsg141.htm\n- HSG144: Safe use of vehicles on construction sites: https://www.hse.gov.uk/pubns/books/hsg144.htm\n\nAnalyse the site photos carefully and identify all visible hazards, site conditions, environmental factors, and anything relevant to safe working.\n\nRespond ONLY with a valid JSON object in exactly this structure, no preamble, no markdown:\n\n{\n  \"taskType\": \"Excavation / Groundworks\",\n  \"location\": \"Residential access road, Bristol BS3\",\n  \"scopeOfWorks\": \"2-3 sentences describing the full scope of the works to be undertaken\",\n  \"siteObservations\": \"3-5 sentences describing what was observed in the site photos — ground conditions, access, proximity hazards, environmental factors, existing infrastructure, overhead/underground services visible, any specific risk factors identified from the photos\",\n  \"hazards\": [\n    {\n      \"hazard\": \"Hazard name\",\n      \"thoseAtRisk\": \"Who is at risk\",\n      \"initialLikelihood\": 4,\n      \"initialSeverity\": 4,\n      \"initialRisk\": \"High|Medium|Low\",\n      \"controls\": \"Specific control measures to reduce this risk\",\n      \"residualLikelihood\": 2,\n      \"residualSeverity\": 3,\n      \"residualRisk\": \"High|Medium|Low\"\n    }\n  ],\n  \"methodStatement\": \"Step-by-step method statement as a numbered sequence. Each step on a new line starting with the step number. Minimum 8 steps covering: pre-task checks, site setup, task execution sequence, quality checks, and demobilisation.\",\n  \"ppe\": [\"PPE item 1\", \"PPE item 2\", \"PPE item 3\"],\n  \"welfareArrangements\": \"Welfare facilities available on site under CDM 2015 Regulation 13.\",\n  \"environmentalControls\": \"Environmental controls under Environmental Protection Act 1990 and site-specific requirements.\",\n  \"coshhAssessment\": \"COSHH assessment under COSHH Regulations 2002.\",\n  \"refuellingProcedure\": \"Step-by-step refuelling procedure for plant and equipment on site.\",\n  \"trainingRequirements\": [\"Training/certification requirement 1\", \"Training/certification requirement 2\"],\n  \"emergencyArrangements\": \"Clear emergency arrangements including nearest A&E hospital based on location.\",\n  \"competencies\": \"Required certifications, qualifications, training, and experience for operatives undertaking this work under UK legislation and industry standards\",\n  \"reviewDate\": \"This document should be reviewed within 12 months of issue, or immediately if scope changes, an incident occurs, or new hazards are identified\",\n  \"references\": [\n    { \"title\": \"Exact title from the HSE Guidance list above\", \"url\": \"https://exact-url-from-list\" }\n  ]\n}\n\nProduce at least 8 hazards. Include every critical risk requirement above as an explicit hazard/control entry unless it is genuinely irrelevant. Pay particular attention to underground services, mobile plant, machinery/work equipment, plant-pedestrian interface, live traffic/highway interface, public interface, noise/vibration, COSHH/refuelling, and excavation stability. Use the 5x5 risk matrix. Be specific and technical. Reference relevant UK regulations. PPE minimum 6 items. trainingRequirements must list each individual certification, competency card, or course required. For references: select 4-8 HSE documents from the list provided that are most directly applicable.",
+  "apiPayloadSummary": {
+    "model": "gpt-4o",
+    "max_tokens": 4500,
+    "imageCount": 3
+  }
+}

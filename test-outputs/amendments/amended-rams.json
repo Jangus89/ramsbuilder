@@ -1,0 +1,156 @@
+{
+  "taskType": "Excavation / Groundworks",
+  "location": "Residential access road, Bristol BS3",
+  "scopeOfWorks": "Excavate a short trench across an access road, expose and repair a damaged duct, and reinstate the granular sub-base. Operations involve a compact excavator, dumper, and vibrating plate compactor while maintaining pedestrian access and protecting nearby parked vehicles.",
+  "siteObservations": "The site is located in a residential area with close proximity to pedestrian and vehicular access. Excavation is performed near existing pipelines and services, suggesting potential underground utilities. Multiple pieces of heavy machinery are in use, indicating a need for caution around mobile plant operations. Environmental factors include exposure to dust and possible noise concerns.",
+  "hazards": [
+    {
+      "hazard": "Underground services strike",
+      "thoseAtRisk": "Site workers, nearby residents",
+      "initialLikelihood": 4,
+      "initialSeverity": 4,
+      "initialRisk": "High",
+      "controls": "Review statutory utility plans and site service drawings. Perform CAT and Genny scans. Use permit to dig. Conduct trial holes and use hand digging near suspected services. Escalate if unidentified services are found.",
+      "residualLikelihood": 2,
+      "residualSeverity": 3,
+      "residualRisk": "Medium"
+    },
+    {
+      "hazard": "Vehicle intrusion during live traffic interface",
+      "thoseAtRisk": "Site workers, road users",
+      "initialLikelihood": 4,
+      "initialSeverity": 5,
+      "initialRisk": "High",
+      "controls": "Implement temporary traffic management with cones and barriers. Use traffic management operatives. Ensure high-visibility clothing and work zone lighting.",
+      "residualLikelihood": 2,
+      "residualSeverity": 3,
+      "residualRisk": "Medium"
+    },
+    {
+      "hazard": "Public interference with work areas",
+      "thoseAtRisk": "Site workers, public",
+      "initialLikelihood": 3,
+      "initialSeverity": 4,
+      "initialRisk": "High",
+      "controls": "Use barriers, signage, and controlled access points. Maintain safe pedestrian routes. Use a marshal where public interaction cannot be segregated.",
+      "residualLikelihood": 2,
+      "residualSeverity": 2,
+      "residualRisk": "Low"
+    },
+    {
+      "hazard": "Contact with overhead services",
+      "thoseAtRisk": "Site workers using machinery",
+      "initialLikelihood": 3,
+      "initialSeverity": 5,
+      "initialRisk": "High",
+      "controls": "Identify overhead services and confirm exclusion distances. Use goalposts and height restrictors. Employ a spotter during operations.",
+      "residualLikelihood": 2,
+      "residualSeverity": 3,
+      "residualRisk": "Medium"
+    },
+    {
+      "hazard": "Dust exposure",
+      "thoseAtRisk": "Site workers, nearby residents",
+      "initialLikelihood": 3,
+      "initialSeverity": 3,
+      "initialRisk": "Medium",
+      "controls": "Use water suppression and RPE. Segregate dusty work areas and clean using wet methods.",
+      "residualLikelihood": 1,
+      "residualSeverity": 2,
+      "residualRisk": "Low"
+    },
+    {
+      "hazard": "Noise and vibration exposure",
+      "thoseAtRisk": "Site workers",
+      "initialLikelihood": 3,
+      "initialSeverity": 4,
+      "initialRisk": "Medium",
+      "controls": "Assess HAVS and noise exposure, limit trigger time. Use low-vibration tools, rotate tasks, and provide hearing protection.",
+      "residualLikelihood": 1,
+      "residualSeverity": 2,
+      "residualRisk": "Low"
+    },
+    {
+      "hazard": "Collision between plant and pedestrians",
+      "thoseAtRisk": "Site workers, pedestrians",
+      "initialLikelihood": 4,
+      "initialSeverity": 5,
+      "initialRisk": "High",
+      "controls": "Use exclusion zones with barriers. Assign a banksman for guiding plant movements. Ensure plant pre-use checks.",
+      "residualLikelihood": 2,
+      "residualSeverity": 3,
+      "residualRisk": "Medium"
+    },
+    {
+      "hazard": "Excavation collapse",
+      "thoseAtRisk": "Site workers",
+      "initialLikelihood": 3,
+      "initialSeverity": 5,
+      "initialRisk": "High",
+      "controls": "Assess ground conditions, use shoring as needed. Keep spoil away from edges. Provide edge protection and inspect after weather events.",
+      "residualLikelihood": 1,
+      "residualSeverity": 3,
+      "residualRisk": "Low"
+    },
+    {
+      "hazard": "Environmental spill / pollution",
+      "thoseAtRisk": "Site workers, environment",
+      "initialLikelihood": 3,
+      "initialSeverity": 4,
+      "initialRisk": "High",
+      "controls": "Use spill kits and drip trays during refuelling. Designate refuelling areas. Protect drains and watercourses. Store fuel securely. Escalate and clean spills using approved procedures.",
+      "residualLikelihood": 1,
+      "residualSeverity": 2,
+      "residualRisk": "Low"
+    }
+  ],
+  "methodStatement": "1. Review site plans and perform CAT scans. 2. Set up safe zones and traffic management. 3. Conduct site induction specific to the project. 4. Begin excavation using hand tools near identified services. 5. Use compact excavator to remove soil. 6. Expose and repair duct. 7. Refill trench with granular sub-base and compact. 8. Restore area and remove site equipment. 9. Implement refuelling control measures with spill kits and drip trays.",
+  "ppe": [
+    "High-visibility clothing",
+    "Hard hats",
+    "Safety boots",
+    "Gloves",
+    "Hearing protection",
+    "Dust masks"
+  ],
+  "welfareArrangements": "Welfare facilities must include toilets, hand washing stations, and a rest area, in compliance with CDM 2015 Regulation 13.",
+  "environmentalControls": "Avoid ground contamination with spill kits and secure waste management. Monitor air quality for dust and noise levels. Protect watercourses and drains from spills.",
+  "coshhAssessment": "Review SDS/COSHH assessments for substances like fuel and oil on site to mitigate exposure risks.",
+  "refuellingProcedure": "1. Move plant to designated refuelling area with drip trays. 2. Turn off equipment. 3. Use spill kit under nozzle. 4. Replace fuel cap securely. 5. Clean up any spills immediately and report.",
+  "trainingRequirements": [
+    "CSCS Card",
+    "Excavator Operator Certification",
+    "CAT and Genny Training",
+    "Traffic Management Certification",
+    "Environmental Spill Response Training"
+  ],
+  "emergencyArrangements": "Dial 999 in the event of an emergency. Nearest A&E is Southmead Hospital, Southmead Road, Westbury-on-Trym, Bristol BS10 5NB.",
+  "competencies": "All operatives must have relevant CSCS cards, NVQs in construction operations, and completed site safety inductions.",
+  "reviewDate": "This document should be reviewed within 12 months of issue, or immediately if scope changes, an incident occurs, or new hazards are identified.",
+  "references": [
+    {
+      "title": "HSG47: Avoiding danger from underground services",
+      "url": "https://www.hse.gov.uk/pubns/books/hsg47.htm"
+    },
+    {
+      "title": "HSG150: Health and safety in construction",
+      "url": "https://www.hse.gov.uk/pubns/books/hsg150.htm"
+    },
+    {
+      "title": "COSHH Essentials - advice sheets",
+      "url": "https://www.hse.gov.uk/coshh/essentials/direct-advice/index.htm"
+    },
+    {
+      "title": "HSG144: Safe use of vehicles on construction sites",
+      "url": "https://www.hse.gov.uk/pubns/books/hsg144.htm"
+    },
+    {
+      "title": "Construction health and safety",
+      "url": "https://www.hse.gov.uk/construction/index.htm"
+    },
+    {
+      "title": "Pollution Prevention Guidelines",
+      "url": "https://www.gov.uk/guidance/pollution-prevention-for-businesses"
+    }
+  ]
+}

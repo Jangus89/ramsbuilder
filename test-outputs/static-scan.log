@@ -1,0 +1,1 @@
+app/api/openai/chat/route.js:24:        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,

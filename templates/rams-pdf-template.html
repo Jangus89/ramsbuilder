@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>{{taskType}} - RAMS</title>
+    <style>
+      @page { margin: 16mm; }
+      body { color: #16181d; font-family: Arial, Helvetica, sans-serif; font-size: 12px; line-height: 1.55; }
+      .cover { border-bottom: 3px solid #0b7a53; display: grid; gap: 18px; grid-template-columns: 1fr auto; margin-bottom: 26px; padding-bottom: 22px; }
+      .eyebrow { color: #0b7a53; font-size: 10px; font-weight: 700; letter-spacing: 0.12em; margin-bottom: 7px; text-transform: uppercase; }
+      h1 { font-size: 26px; line-height: 1.15; margin: 0; }
+      .status { background: #fff7da; border: 1px solid #e0b02d; border-radius: 4px; color: #6f4e00; font-size: 10px; font-weight: 700; letter-spacing: 0.06em; padding: 7px 10px; text-transform: uppercase; }
+      .meta-grid { display: grid; gap: 8px; grid-template-columns: repeat(4, 1fr); margin-bottom: 24px; }
+      .meta-item { border: 1px solid #dde2e8; border-radius: 6px; min-height: 58px; padding: 9px 10px; }
+      .meta-label { color: #6b7280; font-size: 9px; font-weight: 700; letter-spacing: 0.08em; margin-bottom: 4px; text-transform: uppercase; }
+      .meta-value { color: #111827; font-size: 12px; font-weight: 600; }
+      .section { break-inside: avoid; margin-bottom: 22px; }
+      .section-title { align-items: center; color: #0b7a53; display: flex; font-size: 10px; font-weight: 800; gap: 10px; letter-spacing: 0.1em; margin-bottom: 9px; text-transform: uppercase; }
+      .section-title::after { background: #dde2e8; content: ''; flex: 1; height: 1px; }
+      p, pre { color: #2f3742; font-family: Arial, Helvetica, sans-serif; font-size: 12px; line-height: 1.6; margin: 0; white-space: pre-wrap; }
+      table { border-collapse: collapse; font-size: 11px; table-layout: fixed; width: 100%; }
+      th { background: #f3f6f8; border-bottom: 2px solid #d8dee6; color: #4b5563; font-size: 9px; letter-spacing: 0.06em; padding: 8px; text-align: left; text-transform: uppercase; }
+      td { border-bottom: 1px solid #e8edf2; color: #2f3742; line-height: 1.45; padding: 8px; vertical-align: top; word-break: break-word; }
+      .risk-pill { border-radius: 3px; display: inline-block; font-size: 9px; font-weight: 800; letter-spacing: 0.04em; margin-bottom: 4px; padding: 2px 7px; text-transform: uppercase; }
+      .risk-high { background: #fee2e2; color: #b91c1c; }
+      .risk-medium { background: #fef3c7; color: #a16207; }
+      .risk-low { background: #dcfce7; color: #047857; }
+      .chip-grid { display: flex; flex-wrap: wrap; gap: 6px; }
+      .chip { background: #f6f8fa; border: 1px solid #dde2e8; border-radius: 4px; color: #27313d; font-size: 11px; padding: 5px 9px; }
+      .sign-grid { display: grid; gap: 10px; grid-template-columns: repeat(3, 1fr); }
+      .sign-box { border: 1px solid #d8dee6; border-radius: 6px; min-height: 120px; padding: 10px; }
+      .line { border-top: 1px solid #cfd7e1; margin-top: 18px; padding-top: 4px; }
+    </style>
+  </head>
+  <body>
+    <header class="cover">
+      <div>
+        <div class="eyebrow">Risk Assessment &amp; Method Statement</div>
+        <h1>{{taskType}}</h1>
+      </div>
+      <div class="status">Draft - Review Required</div>
+    </header>
+
+    <section class="meta-grid">
+      <div class="meta-item"><div class="meta-label">Reference</div><div class="meta-value">{{ref_number}}</div></div>
+      <div class="meta-item"><div class="meta-label">Issue Date</div><div class="meta-value">{{date}}</div></div>
+      <div class="meta-item"><div class="meta-label">Location</div><div class="meta-value">{{location}}</div></div>
+      <div class="meta-item"><div class="meta-label">Contractor</div><div class="meta-value">{{company_name}}</div></div>
+    </section>
+
+    <section class="section"><div class="section-title">Scope of Works</div><p>{{scopeOfWorks}}</p></section>
+    <section class="section"><div class="section-title">Site Observations</div><p>{{siteObservations}}</p></section>
+
+    <section class="section">
+      <div class="section-title">Hazard Register &amp; Risk Assessment</div>
+      <table>
+        <thead><tr><th>Hazard</th><th>Those at Risk</th><th>Initial Risk</th><th>Controls</th><th>Residual Risk</th></tr></thead>
+        <tbody>{{hazard_rows}}</tbody>
+      </table>
+    </section>
+
+    <section class="section"><div class="section-title">Method Statement</div><pre>{{methodStatement}}</pre></section>
+    <section class="section"><div class="section-title">Personal Protective Equipment</div><div class="chip-grid">{{ppe_chips}}</div></section>
+    <section class="section"><div class="section-title">Training Requirements</div><div class="chip-grid">{{training_chips}}</div></section>
+    <section class="section"><div class="section-title">Emergency Arrangements</div><pre>{{emergencyArrangements}}</pre></section>
+    <section class="section"><div class="section-title">Sign-off</div><div class="sign-grid">{{signoff_boxes}}</div></section>
+  </body>
+</html>

@@ -1,0 +1,60 @@
+{\rtf1\ansi\ansicpg1252\cocoartf2639
+\cocoatextscaling0\cocoaplatform0{\fonttbl\f0\fswiss\fcharset0 Arial-BoldMT;\f1\fswiss\fcharset0 ArialMT;\f2\fnil\fcharset0 Menlo-Regular;
+}
+{\colortbl;\red255\green255\blue255;\red14\green14\blue14;\red18\green107\blue61;\red240\green241\blue244;
+}
+{\*\expandedcolortbl;;\cssrgb\c6667\c6667\c6667;\cssrgb\c3922\c48627\c30588;\cssrgb\c95294\c95686\c96471;
+}
+{\*\listtable{\list\listtemplateid1\listhybrid{\listlevel\levelnfc23\levelnfcn23\leveljc0\leveljcn0\levelfollow0\levelstartat1\levelspace360\levelindent0{\*\levelmarker \{disc\}}{\leveltext\leveltemplateid1\'01\uc0\u8226 ;}{\levelnumbers;}\fi-360\li720\lin720 }{\listname ;}\listid1}
+{\list\listtemplateid2\listhybrid{\listlevel\levelnfc23\levelnfcn23\leveljc0\leveljcn0\levelfollow0\levelstartat1\levelspace360\levelindent0{\*\levelmarker \{disc\}}{\leveltext\leveltemplateid101\'01\uc0\u8226 ;}{\levelnumbers;}\fi-360\li720\lin720 }{\listname ;}\listid2}}
+{\*\listoverridetable{\listoverride\listid1\listoverridecount0\ls1}{\listoverride\listid2\listoverridecount0\ls2}}
+{\info
+{\title PDF Export Review}}\deftab720
+\pard\pardeftab720\sl744\sa80\partightenfactor0
+
+\f0\b\fs48 \cf2 \expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 SafeFlow PDF Export Review\
+\pard\pardeftab720\sl403\sa260\partightenfactor0
+
+\f1\b0\fs26 \cf2 Generated as a review artifact for the PDF export hardening work.\
+\pard\pardeftab720\sl403\sa215\partightenfactor0
+
+\f0\b \AppleTypeServices\AppleTypeServicesF65539 \cf3 \strokec3 WHAT CHANGED\
+\pard\tx220\tx720\pardeftab720\li720\fi-720\sl403\partightenfactor0
+\ls1\ilvl0
+\f1\b0 \AppleTypeServices \cf2 \kerning1\expnd0\expndtw0 \outl0\strokewidth0 {\listtext	\uc0\u8226 	}\expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 The PDF/print export no longer builds a document by interpolating RAMS data into an HTML string.\
+\ls1\ilvl0\kerning1\expnd0\expndtw0 \outl0\strokewidth0 {\listtext	\uc0\u8226 	}\expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 The export now opens a print window and constructs the document using DOM nodes and 
+\f2 \cb4 textContent
+\f1 \cb1 .\
+\ls1\ilvl0\kerning1\expnd0\expndtw0 \outl0\strokewidth0 {\listtext	\uc0\u8226 	}\expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 Risk labels are normalised to known CSS classes before being applied.\
+\ls1\ilvl0\kerning1\expnd0\expndtw0 \outl0\strokewidth0 {\listtext	\uc0\u8226 	}\expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 Generated text, user-entered text, and AI-returned content are treated as text, not executable markup.\
+\pard\pardeftab720\sl403\sa215\partightenfactor0
+
+\f0\b \AppleTypeServices\AppleTypeServicesF65539 \cf3 \strokec3 WHY IT MATTERS\
+\pard\pardeftab720\sl403\sa260\partightenfactor0
+
+\f1\b0 \AppleTypeServices \cf2 \strokec2 The previous implementation used 
+\f2 \cb4 document.write
+\f1 \cb1  with generated RAMS fields embedded directly in HTML. If a generated value contained HTML-like content, it could alter the exported document structure. The new path avoids that by assigning all RAMS content through text nodes. \
+\pard\pardeftab720\sl403\sa215\partightenfactor0
+
+\f0\b \AppleTypeServices\AppleTypeServicesF65539 \cf3 \strokec3 VERIFICATION\
+\pard\tx220\tx720\pardeftab720\li720\fi-720\sl403\partightenfactor0
+\ls2\ilvl0
+\f2\b0 \AppleTypeServices \cf2 \cb4 \kerning1\expnd0\expndtw0 \outl0\strokewidth0 {\listtext	\uc0\u8226 	}\expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 npm run build
+\f1 \cb1  passes.\
+\pard\tx220\tx720\pardeftab720\li720\fi-720\sl403\partightenfactor0
+\ls2\ilvl0\cf2 \kerning1\expnd0\expndtw0 \outl0\strokewidth0 {\listtext	\uc0\u8226 	}\expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 OpenAI calls now use shared error handling through 
+\f2 \cb4 lib/openaiClient.js
+\f1 \cb1 .\
+\ls2\ilvl0\kerning1\expnd0\expndtw0 \outl0\strokewidth0 {\listtext	\uc0\u8226 	}\expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 The job description field is now a larger textarea labelled "Tell us about the job".\
+\ls2\ilvl0\kerning1\expnd0\expndtw0 \outl0\strokewidth0 {\listtext	\uc0\u8226 	}\expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 Supabase and OpenAI environment variables are present locally.\
+}

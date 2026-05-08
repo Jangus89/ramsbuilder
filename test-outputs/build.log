@@ -1,0 +1,32 @@
+
+> safeflow-rams-builder@0.1.0 build
+> next build
+
+  ▲ Next.js 14.2.35
+  - Environments: .env.local
+
+   Creating an optimized production build ...
+ ✓ Compiled successfully
+   Linting and checking validity of types ...
+   Collecting page data ...
+   Generating static pages (0/5) ...
+   Generating static pages (1/5) 
+   Generating static pages (2/5) 
+   Generating static pages (3/5) 
+ ✓ Generating static pages (5/5)
+   Finalizing page optimization ...
+   Collecting build traces ...
+
+Route (app)                              Size     First Load JS
+┌ ○ /                                    92 kB           180 kB
+├ ○ /_not-found                          873 B          88.3 kB
+└ ƒ /api/openai/chat                     0 B                0 B
++ First Load JS shared by all            87.5 kB
+  ├ chunks/117-59e030f1b0f89043.js       31.7 kB
+  ├ chunks/fd9d1056-42a1c2df9c4a85a8.js  53.6 kB
+  └ other shared chunks (total)          2.1 kB
+
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+

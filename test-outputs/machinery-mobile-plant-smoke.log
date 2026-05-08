@@ -1,0 +1,6 @@
+(node:19723) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/Home/Documents/GitHub/ramsbuilder/lib/criticalRiskRules.js is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/Home/Documents/GitHub/ramsbuilder/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+machinery=ground-disturbance-services,live-traffic-highways,silica-dust,noise-vibration,machinery-work-equipment,weather-exposure
+mobile plant=ground-disturbance-services,live-traffic-highways,public-interface,plant-pedestrian-interface,mobile-plant,environmental-spill,weather-exposure

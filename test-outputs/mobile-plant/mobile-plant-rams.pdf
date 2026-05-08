@@ -1,0 +1,376 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+2 0 obj
+<< /Length 2797 >>
+stream
+BT
+/F1 10 Tf
+14 TL
+50 790 Td
+(SAFEFLOW RAMS - TEST OUTPUT) Tj
+T*
+(Task: Excavation / Groundworks) Tj
+T*
+(Location: Residential access road, Bristol BS3) Tj
+T*
+(Status: Generated from fresh mobile plant / excavation image test) Tj
+T*
+() Tj
+T*
+(Image inputs:) Tj
+T*
+(- test-outputs/mobile-plant/images/excavator-trench.jpg) Tj
+T*
+(- test-outputs/mobile-plant/images/pipeline-trench.jpg) Tj
+T*
+(- test-outputs/mobile-plant/images/mobile-plant-grading.jpg) Tj
+T*
+() Tj
+T*
+(SCOPE OF WORKS) Tj
+T*
+(--------------) Tj
+T*
+(Excavate a short trench across an access road, expose and repair a damaged duct, and) Tj
+T*
+(reinstate the granular sub-base. Operations involve a compact excavator, dumper, and) Tj
+T*
+(vibrating plate compactor while maintaining pedestrian access and protecting nearby parked) Tj
+T*
+(vehicles.) Tj
+T*
+() Tj
+T*
+(SITE OBSERVATIONS) Tj
+T*
+(-----------------) Tj
+T*
+(The site is located in a residential area with close proximity to pedestrian and vehicular) Tj
+T*
+(access. Excavation is performed near existing pipelines and services, suggesting potential) Tj
+T*
+(underground utilities. Multiple pieces of heavy machinery are in use, indicating a need for) Tj
+T*
+(caution around mobile plant operations. Environmental factors include exposure to dust and) Tj
+T*
+(possible noise concerns.) Tj
+T*
+() Tj
+T*
+(CRITICAL RISK VALIDATION) Tj
+T*
+(------------------------) Tj
+T*
+(Detected rules:) Tj
+T*
+(- Ground Disturbance / Underground Services \(ground-disturbance-services\)) Tj
+T*
+(- Live Traffic / Highway Interface \(live-traffic-highways\)) Tj
+T*
+(- Public Interface \(public-interface\)) Tj
+T*
+(- Overhead Services \(overhead-services\)) Tj
+T*
+(- Silica / Dust \(silica-dust\)) Tj
+T*
+(- Noise / Vibration \(noise-vibration\)) Tj
+T*
+(- COSHH Substances \(coshh-substances\)) Tj
+T*
+(- Plant / Pedestrian Interface \(plant-pedestrian-interface\)) Tj
+T*
+(- Machinery / Work Equipment \(machinery-work-equipment\)) Tj
+T*
+(- Mobile Plant \(mobile-plant\)) Tj
+T*
+(- Excavation Collapse / Ground Instability \(excavation-collapse\)) Tj
+T*
+(- Environmental Spill / Pollution \(environmental-spill\)) Tj
+T*
+(- Weather / Temperature Exposure \(weather-exposure\)) Tj
+T*
+() Tj
+T*
+(Validation gaps found:) Tj
+T*
+(- Environmental Spill / Pollution: Fuel, oil or material release causing environmental harm.) Tj
+T*
+() Tj
+T*
+(HAZARD REGISTER) Tj
+T*
+(---------------) Tj
+T*
+(1. Underground services strike [High -> Medium]) Tj
+T*
+(   Those at risk: Site workers, nearby residents) Tj
+T*
+(   Initial: L4 x S4 | Residual: L2 x S3) Tj
+T*
+(   Controls: Review statutory utility plans and site service drawings. Perform CAT and) Tj
+T*
+(Genny scans. Use permit to dig. Conduct trial holes and use hand digging near suspected) Tj
+T*
+(services. Escalate if unidentified services are found.) Tj
+T*
+() Tj
+T*
+ET
+endstream
+endobj
+3 0 obj
+<< /Type /Page /Parent 8 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 1 0 R >> >> /Contents 2 0 R >>
+endobj
+4 0 obj
+<< /Length 2869 >>
+stream
+BT
+/F1 10 Tf
+14 TL
+50 790 Td
+(2. Vehicle intrusion during live traffic interface [High -> Medium]) Tj
+T*
+(   Those at risk: Site workers, road users) Tj
+T*
+(   Initial: L4 x S5 | Residual: L2 x S3) Tj
+T*
+(   Controls: Implement temporary traffic management with cones and barriers. Use traffic) Tj
+T*
+(management operatives. Ensure high-visibility clothing and work zone lighting.) Tj
+T*
+() Tj
+T*
+(3. Public interference with work areas [High -> Low]) Tj
+T*
+(   Those at risk: Site workers, public) Tj
+T*
+(   Initial: L3 x S4 | Residual: L2 x S2) Tj
+T*
+(   Controls: Use barriers, signage, and controlled access points. Maintain safe) Tj
+T*
+(pedestrian routes. Use a marshal where public interaction cannot be segregated.) Tj
+T*
+() Tj
+T*
+(4. Contact with overhead services [High -> Medium]) Tj
+T*
+(   Those at risk: Site workers using machinery) Tj
+T*
+(   Initial: L3 x S5 | Residual: L2 x S3) Tj
+T*
+(   Controls: Identify overhead services and confirm exclusion distances. Use goalposts) Tj
+T*
+(and height restrictors. Employ a spotter during operations.) Tj
+T*
+() Tj
+T*
+(5. Dust exposure [Medium -> Low]) Tj
+T*
+(   Those at risk: Site workers, nearby residents) Tj
+T*
+(   Initial: L3 x S3 | Residual: L1 x S2) Tj
+T*
+(   Controls: Use water suppression and RPE. Segregate dusty work areas and clean using) Tj
+T*
+(wet methods.) Tj
+T*
+() Tj
+T*
+(6. Noise and vibration exposure [Medium -> Low]) Tj
+T*
+(   Those at risk: Site workers) Tj
+T*
+(   Initial: L3 x S4 | Residual: L1 x S2) Tj
+T*
+(   Controls: Assess HAVS and noise exposure, limit trigger time. Use low-vibration) Tj
+T*
+(tools, rotate tasks, and provide hearing protection.) Tj
+T*
+() Tj
+T*
+(7. Collision between plant and pedestrians [High -> Medium]) Tj
+T*
+(   Those at risk: Site workers, pedestrians) Tj
+T*
+(   Initial: L4 x S5 | Residual: L2 x S3) Tj
+T*
+(   Controls: Use exclusion zones with barriers. Assign a banksman for guiding plant) Tj
+T*
+(movements. Ensure plant pre-use checks.) Tj
+T*
+() Tj
+T*
+(8. Excavation collapse [High -> Low]) Tj
+T*
+(   Those at risk: Site workers) Tj
+T*
+(   Initial: L3 x S5 | Residual: L1 x S3) Tj
+T*
+(   Controls: Assess ground conditions, use shoring as needed. Keep spoil away from) Tj
+T*
+(edges. Provide edge protection and inspect after weather events.) Tj
+T*
+() Tj
+T*
+() Tj
+T*
+(METHOD STATEMENT) Tj
+T*
+(----------------) Tj
+T*
+(1. Review site plans and perform CAT scans. 2. Set up safe zones and traffic management. 3.) Tj
+T*
+(Conduct site induction specific to the project. 4. Begin excavation using hand tools near) Tj
+T*
+(identified services. 5. Use compact excavator to remove soil. 6. Expose and repair duct. 7.) Tj
+T*
+(Refill trench with granular sub-base and compact. 8. Restore area and remove site equipment.) Tj
+T*
+() Tj
+T*
+(PPE) Tj
+T*
+(---) Tj
+T*
+(High-visibility clothing, Hard hats, Safety boots, Gloves, Hearing protection, Dust masks) Tj
+T*
+() Tj
+T*
+ET
+endstream
+endobj
+5 0 obj
+<< /Type /Page /Parent 8 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 1 0 R >> >> /Contents 4 0 R >>
+endobj
+6 0 obj
+<< /Length 2041 >>
+stream
+BT
+/F1 10 Tf
+14 TL
+50 790 Td
+(WELFARE ARRANGEMENTS) Tj
+T*
+(--------------------) Tj
+T*
+(Welfare facilities must include toilets, hand washing stations, and a rest area, in) Tj
+T*
+(compliance with CDM 2015 Regulation 13.) Tj
+T*
+() Tj
+T*
+(ENVIRONMENTAL CONTROLS) Tj
+T*
+(----------------------) Tj
+T*
+(Avoid ground contamination with spill kits and secure waste management. Monitor air quality) Tj
+T*
+(for dust and noise levels.) Tj
+T*
+() Tj
+T*
+(COSHH ASSESSMENT) Tj
+T*
+(----------------) Tj
+T*
+(Review SDS/COSHH assessments for substances like fuel and oil on site to mitigate exposure) Tj
+T*
+(risks.) Tj
+T*
+() Tj
+T*
+(REFUELLING PROCEDURE) Tj
+T*
+(--------------------) Tj
+T*
+(1. Move plant to designated refuelling area. 2. Turn off equipment. 3. Use spill kit under) Tj
+T*
+(nozzle. 4. Replace fuel cap securely. 5. Clean up any spills immediately.) Tj
+T*
+() Tj
+T*
+(TRAINING REQUIREMENTS) Tj
+T*
+(---------------------) Tj
+T*
+(- CSCS Card) Tj
+T*
+(- Excavator Operator Certification) Tj
+T*
+(- CAT and Genny Training) Tj
+T*
+(- Traffic Management Certification) Tj
+T*
+() Tj
+T*
+(EMERGENCY ARRANGEMENTS) Tj
+T*
+(----------------------) Tj
+T*
+(Dial 999 in the event of an emergency. Nearest A&E is Southmead Hospital, Southmead Road,) Tj
+T*
+(Westbury-on-Trym, Bristol BS10 5NB.) Tj
+T*
+() Tj
+T*
+(COMPETENCIES) Tj
+T*
+(------------) Tj
+T*
+(All operatives must have relevant CSCS cards, NVQs in construction operations, and completed) Tj
+T*
+(site safety inductions.) Tj
+T*
+() Tj
+T*
+(REFERENCES) Tj
+T*
+(----------) Tj
+T*
+(- HSG47: Avoiding danger from underground services:) Tj
+T*
+(https://www.hse.gov.uk/pubns/books/hsg47.htm) Tj
+T*
+(- HSG150: Health and safety in construction: https://www.hse.gov.uk/pubns/books/hsg150.htm) Tj
+T*
+(- COSHH Essentials - advice sheets: https://www.hse.gov.uk/coshh/essentials/direct-) Tj
+T*
+(advice/index.htm) Tj
+T*
+(- HSG144: Safe use of vehicles on construction sites:) Tj
+T*
+(https://www.hse.gov.uk/pubns/books/hsg144.htm) Tj
+T*
+(- Construction health and safety: https://www.hse.gov.uk/construction/index.htm) Tj
+T*
+ET
+endstream
+endobj
+7 0 obj
+<< /Type /Page /Parent 8 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 1 0 R >> >> /Contents 6 0 R >>
+endobj
+8 0 obj
+<< /Type /Pages /Kids [3 0 R 5 0 R 7 0 R] /Count 3 >>
+endobj
+9 0 obj
+<< /Type /Catalog /Pages 8 0 R >>
+endobj
+xref
+0 10
+0000000000 65535 f 
+0000000009 00000 n 
+0000000079 00000 n 
+0000002928 00000 n 
+0000003054 00000 n 
+0000005975 00000 n 
+0000006101 00000 n 
+0000008194 00000 n 
+0000008320 00000 n 
+0000008389 00000 n 
+trailer
+<< /Size 10 /Root 9 0 R >>
+startxref
+8438
+%%EOF

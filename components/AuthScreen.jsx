@@ -1,8 +1,8 @@
 'use client';
 import { useState } from 'react';
-import { supabase } from '../lib/supabase';
+import { isSupabaseConfigured, supabase } from '../lib/supabase';
 
-export default function AuthScreen() {
+export default function AuthScreen({ onDemo }) {
   const [mode, setMode] = useState('login'); // 'login' | 'signup'
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -12,6 +12,10 @@ export default function AuthScreen() {
 
   const handle = async (e) => {
     e.preventDefault();
+    if (!isSupabaseConfigured) {
+      setError('Supabase is not configured. Restart the app to use local demo mode, or add Supabase environment variables to enable login.');
+      return;
+    }
     setLoading(true);
     setError('');
     setMessage('');
@@ -95,6 +99,22 @@ export default function AuthScreen() {
               {mode === 'login' ? "Don't have an account? Sign up" : 'Already have an account? Sign in'}
             </button>
           </div>
+
+          {onDemo && (
+            <>
+              <div style={{ height: 1, background: '#1e2128', margin: '24px 0' }} />
+              <button
+                type="button"
+                onClick={onDemo}
+                style={{ width: '100%', background: 'transparent', color: '#00e5a0', border: '1.5px solid rgba(0,229,160,0.3)', borderRadius: 10, fontFamily: "'DM Sans', sans-serif", fontSize: 14, fontWeight: 600, padding: '13px', cursor: 'pointer', transition: 'all 0.2s' }}
+              >
+                Continue without signing in
+              </button>
+              <p style={{ fontSize: 11, color: '#555', lineHeight: 1.5, textAlign: 'center', marginTop: 10 }}>
+                Local testing mode. Supabase-saved profile, history, and template storage are skipped.
+              </p>
+            </>
+          )}
         </div>
       </div>
     </div>

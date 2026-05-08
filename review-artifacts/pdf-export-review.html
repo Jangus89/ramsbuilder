@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>PDF Export Review</title>
+    <style>
+      body {
+        color: #111;
+        font-family: Arial, sans-serif;
+        line-height: 1.55;
+        margin: 40px auto;
+        max-width: 820px;
+      }
+      h1 {
+        font-size: 24px;
+        margin-bottom: 4px;
+      }
+      h2 {
+        border-bottom: 1px solid #ddd;
+        color: #0a7c4e;
+        font-size: 13px;
+        letter-spacing: 0.08em;
+        margin-top: 28px;
+        padding-bottom: 6px;
+        text-transform: uppercase;
+      }
+      p, li {
+        font-size: 13px;
+      }
+      code {
+        background: #f3f4f6;
+        border: 1px solid #e5e7eb;
+        border-radius: 4px;
+        padding: 1px 5px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>SafeFlow PDF Export Review</h1>
+    <p>Generated as a review artifact for the PDF export hardening work.</p>
+
+    <h2>What Changed</h2>
+    <ul>
+      <li>The PDF/print export no longer builds a document by interpolating RAMS data into an HTML string.</li>
+      <li>The export now opens a print window and constructs the document using DOM nodes and <code>textContent</code>.</li>
+      <li>Risk labels are normalised to known CSS classes before being applied.</li>
+      <li>Generated text, user-entered text, and AI-returned content are treated as text, not executable markup.</li>
+    </ul>
+
+    <h2>Why It Matters</h2>
+    <p>
+      The previous implementation used <code>document.write</code> with generated RAMS fields embedded directly in HTML.
+      If a generated value contained HTML-like content, it could alter the exported document structure. The new path
+      avoids that by assigning all RAMS content through text nodes.
+    </p>
+
+    <h2>Verification</h2>
+    <ul>
+      <li><code>npm run build</code> passes.</li>
+      <li>OpenAI calls now use shared error handling through <code>lib/openaiClient.js</code>.</li>
+      <li>The job description field is now a larger textarea labelled "Tell us about the job".</li>
+      <li>Supabase and OpenAI environment variables are present locally.</li>
+    </ul>
+  </body>
+</html>

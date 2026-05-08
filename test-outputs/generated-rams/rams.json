@@ -1,0 +1,114 @@
+{
+  "taskType": "Saw cutting and reinstatement of a damaged asphalt carriageway patch adjacent to a live lane",
+  "location": "Local access road outside an industrial estate, Birmingham",
+  "scopeOfWorks": "The work involves saw cutting the damaged section of the carriageway and removing the debris. The area will be reinstated with cold-lay asphalt after ensuring the subbase is compact and level.",
+  "siteObservations": "The photos show work being done with appropriate safety gear, though attention to dust control is necessary. Traffic and pedestrian management with barriers and cones seems adequate, but vigilance is required to ensure their effectiveness. Equipment appears suitable for the task, although the proximity to live lanes highlights the need for proper traffic control and visibility. Weather conditions seem clear, which should facilitate operations.",
+  "hazards": [
+    {
+      "hazard": "Live Traffic",
+      "thoseAtRisk": "Workers and pedestrians",
+      "initialLikelihood": 5,
+      "initialSeverity": 5,
+      "initialRisk": "High",
+      "controls": "Deploy temporary traffic lights and barriers to separate the work area from live traffic lanes.",
+      "residualLikelihood": 2,
+      "residualSeverity": 4,
+      "residualRisk": "Medium"
+    },
+    {
+      "hazard": "Dust/Silica Exposure",
+      "thoseAtRisk": "Workers and nearby pedestrians",
+      "initialLikelihood": 4,
+      "initialSeverity": 4,
+      "initialRisk": "High",
+      "controls": "Use water suppression systems and provide masks to workers.",
+      "residualLikelihood": 2,
+      "residualSeverity": 3,
+      "residualRisk": "Medium"
+    },
+    {
+      "hazard": "Noise",
+      "thoseAtRisk": "Workers",
+      "initialLikelihood": 4,
+      "initialSeverity": 4,
+      "initialRisk": "High",
+      "controls": "Provide ear protection to all personnel on site.",
+      "residualLikelihood": 2,
+      "residualSeverity": 2,
+      "residualRisk": "Low"
+    },
+    {
+      "hazard": "Manual Handling",
+      "thoseAtRisk": "Workers",
+      "initialLikelihood": 4,
+      "initialSeverity": 3,
+      "initialRisk": "Medium",
+      "controls": "Train workers in manual handling techniques and use mechanical aids where possible.",
+      "residualLikelihood": 2,
+      "residualSeverity": 2,
+      "residualRisk": "Low"
+    },
+    {
+      "hazard": "Flying Debris",
+      "thoseAtRisk": "Workers and pedestrians",
+      "initialLikelihood": 4,
+      "initialSeverity": 4,
+      "initialRisk": "High",
+      "controls": "Use protective barriers and goggles.",
+      "residualLikelihood": 2,
+      "residualSeverity": 2,
+      "residualRisk": "Low"
+    },
+    {
+      "hazard": "Environmental Spills",
+      "thoseAtRisk": "Environment",
+      "initialLikelihood": 3,
+      "initialSeverity": 3,
+      "initialRisk": "Medium",
+      "controls": "Implement spill kits and ensure correct handling and disposal of waste and fuel.",
+      "residualLikelihood": 2,
+      "residualSeverity": 2,
+      "residualRisk": "Low"
+    }
+  ],
+  "methodStatement": [
+    "Inspect site and set up traffic management with signage and barriers.",
+    "Wear appropriate PPE before starting work.",
+    "Mark the cutting area using chalk or paint.",
+    "Operate the concrete saw with dust suppression system active.",
+    "Remove cut asphalt and debris with tools.",
+    "Ensure subbase is compact using small compaction plant.",
+    "Apply cold-lay asphalt and level it uniformly.",
+    "Remove all tools and equipment, and ensure site is clean before reopening the lane."
+  ],
+  "ppe": [
+    "High-visibility vests",
+    "Hard hats",
+    "Safety goggles",
+    "Dust masks",
+    "Ear protection",
+    "Steel-toed boots"
+  ],
+  "welfareArrangements": "Provide portable toilets and handwashing facilities at the site. Ensure regular breaks.",
+  "environmentalControls": "Minimize dust through suppression techniques and manage waste responsibly.",
+  "coshhAssessment": "Evaluate all substances and provide proper storage and handling guidelines for fuel and asphalt.",
+  "refuellingProcedure": "Refuel in a well-ventilated area using appropriate containers to prevent spills.",
+  "trainingRequirements": [
+    "Manual handling",
+    "Use of cutting equipment",
+    "Traffic management"
+  ],
+  "emergencyArrangements": "Emergency contacts displayed on site. First aid kit accessible. Nearest hospital identified.",
+  "competencies": "Operatives must hold CSCS cards with relevant experience in roadwork.",
+  "reviewDate": "Review this RAMS document quarterly and after any incident.",
+  "references": [
+    {
+      "title": "HSE guidance on roadworks and traffic management",
+      "url": "https://www.hse.gov.uk/pubns/indg412.pdf"
+    },
+    {
+      "title": "HSE Dust Control",
+      "url": "https://www.hse.gov.uk/pubns/cis36.pdf"
+    }
+  ]
+}

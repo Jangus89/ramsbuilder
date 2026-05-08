@@ -1,0 +1,79 @@
+{
+  "detectedCriticalRules": [
+    {
+      "id": "ground-disturbance-services",
+      "title": "Ground Disturbance / Underground Services"
+    },
+    {
+      "id": "live-traffic-highways",
+      "title": "Live Traffic / Highway Interface"
+    },
+    {
+      "id": "public-interface",
+      "title": "Public Interface"
+    },
+    {
+      "id": "overhead-services",
+      "title": "Overhead Services"
+    },
+    {
+      "id": "silica-dust",
+      "title": "Silica / Dust"
+    },
+    {
+      "id": "noise-vibration",
+      "title": "Noise / Vibration"
+    },
+    {
+      "id": "coshh-substances",
+      "title": "COSHH Substances"
+    },
+    {
+      "id": "plant-pedestrian-interface",
+      "title": "Plant / Pedestrian Interface"
+    },
+    {
+      "id": "machinery-work-equipment",
+      "title": "Machinery / Work Equipment"
+    },
+    {
+      "id": "mobile-plant",
+      "title": "Mobile Plant"
+    },
+    {
+      "id": "excavation-collapse",
+      "title": "Excavation Collapse / Ground Instability"
+    },
+    {
+      "id": "environmental-spill",
+      "title": "Environmental Spill / Pollution"
+    },
+    {
+      "id": "weather-exposure",
+      "title": "Weather / Temperature Exposure"
+    }
+  ],
+  "gaps": [
+    {
+      "id": "environmental-spill",
+      "title": "Environmental Spill / Pollution",
+      "hazard": "Fuel, oil or material release causing environmental harm.",
+      "requiredControls": [
+        "Use spill kits, drip trays and designated refuelling areas.",
+        "Protect drains and watercourses before work.",
+        "Store fuel/chemicals securely and away from ignition/drainage routes.",
+        "Escalate and clean spills using approved procedure."
+      ]
+    }
+  ],
+  "hazardTitles": [
+    "Underground services strike",
+    "Vehicle intrusion during live traffic interface",
+    "Public interference with work areas",
+    "Contact with overhead services",
+    "Dust exposure",
+    "Noise and vibration exposure",
+    "Collision between plant and pedestrians",
+    "Excavation collapse"
+  ]
+}

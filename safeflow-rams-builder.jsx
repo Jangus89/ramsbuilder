@@ -2,9 +2,12 @@
 
 import { useState, useRef, useCallback, useEffect } from "react";
 import { DEFAULT_PROFILE, injectProfileIntoPrompt } from './lib/companyProfile';
-import { injectProceduresIntoPrompt } from './lib/procedureLibrary';
+import { extractTextFromFile, injectProceduresIntoPrompt } from './lib/procedureLibrary';
 import { filterGuidanceForTask } from './lib/hseGuidance';
-import { supabase } from './lib/supabase';
+import { isSupabaseConfigured, supabase } from './lib/supabase';
+import { callOpenAIChat, parseJsonResponse } from './lib/openaiClient';
+import { populateRamsPdfTemplate } from './lib/ramsPdfTemplate';
+import { buildCriticalRiskPrompt, detectCriticalRiskRules, validateCriticalRisks } from './lib/criticalRiskRules';
 import SettingsModal from './components/SettingsModal';
 import CompliancePanel from './components/CompliancePanel';
 import AuthScreen from './components/AuthScreen';
@@ -28,9 +31,34 @@ const TASK_TYPES = [
   "Other (describe below)",
 ];
 
-const styles = `
-  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap');
+const DEMO_USER = {
+  id: 'local-demo-user',
+  email: 'local.demo@safeflow.test',
+  app_metadata: {},
+  user_metadata: { name: 'Local Demo' },
+  aud: 'authenticated',
+  created_at: new Date(0).toISOString(),
+};
 
+function injectJobDocumentsIntoPrompt(documents, charBudget = 14000) {
+  if (!documents.length) return '';
+  const perDoc = Math.floor(charBudget / Math.min(documents.length, 6));
+  const blocks = documents.slice(0, 6).map((doc, index) => {
+    const text = doc.text.length > perDoc
+      ? `${doc.text.slice(0, perDoc)}\n[truncated - uploaded job document continues]`
+      : doc.text;
+    return `[JOB-DOC-${index + 1}] ${doc.title || doc.fileName}:\n${text}`;
+  });
+  return '\n\nJOB-SPECIFIC DOCUMENTS - the RAMS MUST comply with and explicitly reflect these uploaded procedures, permits, specifications, client requirements, or scope documents:\n\n' +
+    blocks.join('\n\n---\n\n');
+}
+
+function summariseJobDocuments(documents) {
+  if (!documents.length) return '';
+  return `Uploaded job documents:\n${documents.map((doc, index) => `- JOB-DOC-${index + 1}: ${doc.title || doc.fileName} (${Math.round((doc.charCount || doc.text.length) / 1000)}k chars)`).join('\n')}`;
+}
+
+const styles = `
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
   body {
@@ -200,6 +228,52 @@ const styles = `
     grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
     gap: 12px;
     margin-top: 16px;
+  }
+
+  .job-documents-list {
+    display: grid;
+    gap: 10px;
+    margin-top: 16px;
+  }
+
+  .job-document-item {
+    align-items: flex-start;
+    background: #1e2128;
+    border: 1px solid #2a2d35;
+    border-radius: 8px;
+    display: flex;
+    gap: 12px;
+    justify-content: space-between;
+    padding: 12px 14px;
+  }
+
+  .job-document-title {
+    color: #e8e8e4;
+    font-size: 13px;
+    font-weight: 500;
+    margin-bottom: 3px;
+  }
+
+  .job-document-meta {
+    color: #555;
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+  }
+
+  .job-document-remove {
+    background: none;
+    border: none;
+    color: #555;
+    cursor: pointer;
+    flex-shrink: 0;
+    font-size: 16px;
+    line-height: 1;
+    padding: 2px 6px;
+    transition: color 0.15s;
+  }
+
+  .job-document-remove:hover {
+    color: #ef4444;
   }
 
   .photo-thumb {
@@ -651,6 +725,159 @@ const styles = `
     margin-top: 16px;
   }
 
+  .critical-risk-panel {
+    background: rgba(239,68,68,0.06);
+    border: 1.5px solid rgba(239,68,68,0.28);
+    border-radius: 12px;
+    margin: 0 0 24px;
+    overflow: hidden;
+  }
+
+  .critical-risk-header {
+    background: rgba(239,68,68,0.08);
+    border-bottom: 1px solid rgba(239,68,68,0.18);
+    padding: 16px 20px;
+  }
+
+  .critical-risk-title {
+    color: #ef4444;
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    margin-bottom: 5px;
+    text-transform: uppercase;
+  }
+
+  .critical-risk-copy {
+    color: #c0c0b8;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  .critical-risk-body {
+    display: grid;
+    gap: 10px;
+    padding: 16px 20px 18px;
+  }
+
+  .critical-risk-item {
+    background: rgba(15,17,23,0.35);
+    border: 1px solid rgba(239,68,68,0.16);
+    border-radius: 8px;
+    padding: 12px 14px;
+  }
+
+  .critical-risk-item h4 {
+    color: #ef4444;
+    font-size: 13px;
+    margin: 0 0 6px;
+  }
+
+  .critical-risk-item p {
+    color: #888;
+    font-size: 12px;
+    line-height: 1.5;
+    margin: 0;
+  }
+
+  .amendments-panel {
+    background: #13151c;
+    border: 1.5px solid #1e2128;
+    border-radius: 12px;
+    margin-bottom: 24px;
+    overflow: hidden;
+  }
+
+  .amendments-header {
+    border-bottom: 1px solid #1e2128;
+    padding: 18px 22px 16px;
+  }
+
+  .amendments-title {
+    color: #e8e8e4;
+    font-family: 'Instrument Serif', serif;
+    font-size: 22px;
+    margin-bottom: 4px;
+  }
+
+  .amendments-copy {
+    color: #888;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  .amendments-body {
+    padding: 18px 22px 20px;
+  }
+
+  .amendments-body textarea {
+    min-height: 120px;
+  }
+
+  .amendments-actions {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 12px;
+  }
+
+  .amendments-note {
+    color: #555;
+    font-size: 12px;
+  }
+
+  .setup-panel {
+    margin-top: 32px;
+    background: #13151c;
+    border: 1.5px solid #1e2128;
+    border-radius: 12px;
+    overflow: hidden;
+  }
+
+  .setup-panel:first-of-type { margin-top: 0; }
+
+  .setup-panel-header {
+    padding: 22px 28px 20px;
+    border-bottom: 1px solid #1e2128;
+    background: #1a1d26;
+  }
+
+  .setup-step {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    color: #00e5a0;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+
+  .setup-title {
+    font-family: 'Instrument Serif', serif;
+    font-size: 22px;
+    color: #e8e8e4;
+    margin-bottom: 6px;
+  }
+
+  .setup-copy {
+    font-size: 13px;
+    color: #555;
+    line-height: 1.5;
+  }
+
+  .setup-panel-body {
+    padding: 28px;
+  }
+
+  .setup-panel-footer {
+    padding: 20px 28px;
+    border-top: 1px solid #1e2128;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
   @media (max-width: 600px) {
     .sign-off-grid { grid-template-columns: 1fr; }
     .rams-header { flex-direction: column; }
@@ -709,9 +936,73 @@ function PhotoUpload({ photos, onAdd, onRemove }) {
   );
 }
 
+function JobDocumentUpload({ documents, onAdd, onRemove }) {
+  const [extracting, setExtracting] = useState(false);
+  const [error, setError] = useState('');
+  const inputRef = useRef();
+
+  const handleFiles = useCallback(async (files) => {
+    const selected = Array.from(files || []);
+    if (!selected.length) return;
+    setExtracting(true);
+    setError('');
+    try {
+      for (const file of selected) {
+        const text = await extractTextFromFile(file);
+        const trimmed = text.trim();
+        if (!trimmed) throw new Error(`${file.name} did not contain readable text.`);
+        onAdd({
+          id: `${Date.now()}-${file.name}`,
+          title: file.name.replace(/\.[^.]+$/, ''),
+          fileName: file.name,
+          text: trimmed.slice(0, 50000),
+          charCount: trimmed.length,
+        });
+      }
+    } catch (err) {
+      setError(err.message || 'Could not read that document.');
+    } finally {
+      setExtracting(false);
+      if (inputRef.current) inputRef.current.value = '';
+    }
+  }, [onAdd]);
+
+  return (
+    <div>
+      <div className="upload-zone" onClick={() => !extracting && inputRef.current?.click()}>
+        <div className="upload-icon">
+          <svg viewBox="0 0 24 24" fill="none" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <line x1="16" y1="13" x2="8" y2="13"/>
+            <line x1="16" y1="17" x2="8" y2="17"/>
+          </svg>
+        </div>
+        <h3>{extracting ? 'Reading document…' : 'Upload job documents'}</h3>
+        <p>Optional .txt, .pdf, .md, or .docx procedures, permits, specs, client rules, or scopes</p>
+        <input ref={inputRef} type="file" accept=".txt,.pdf,.md,.docx" multiple onChange={(e) => handleFiles(e.target.files)} />
+      </div>
+      {error && <div className="error-box">{error}</div>}
+      {documents.length > 0 && (
+        <div className="job-documents-list">
+          {documents.map(doc => (
+            <div key={doc.id} className="job-document-item">
+              <div>
+                <div className="job-document-title">{doc.title}</div>
+                <div className="job-document-meta">{doc.fileName} · {(doc.charCount / 1000).toFixed(1)}k chars extracted</div>
+              </div>
+              <button className="job-document-remove" onClick={() => onRemove(doc.id)} aria-label={`Remove ${doc.title}`}>×</button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function LoadingState({ step }) {
   const steps = [
-    'Analysing site photos…',
+    'Analysing job details…',
     'Identifying hazards and risk factors…',
     'Mapping controls and mitigations…',
     'Compiling RAMS document…',
@@ -731,7 +1022,85 @@ function LoadingState({ step }) {
   );
 }
 
-function RamsDocument({ data, onReset, onExportPDF, onExportWord, onExportDrive, onExportOneDrive }) {
+function CriticalRiskPanel({ gaps }) {
+  if (!gaps.length) return null;
+  return (
+    <div className="critical-risk-panel">
+      <div className="critical-risk-header">
+        <div className="critical-risk-title">Critical Risks Need Review</div>
+        <div className="critical-risk-copy">
+          SafeFlow detected mandatory risk rules for this job that were not clearly present in the generated hazard register. Review and add these before using or issuing the RAMS.
+        </div>
+      </div>
+      <div className="critical-risk-body">
+        {gaps.map(gap => (
+          <div key={gap.id} className="critical-risk-item">
+            <h4>{gap.title}</h4>
+            <p>{gap.hazard}</p>
+            <p style={{ marginTop: 6 }}>Expected controls: {gap.requiredControls.slice(0, 3).join('; ')}.</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function AmendmentsPanel({ onAmend, amending, photoCount }) {
+  const [amendment, setAmendment] = useState('');
+  const canSubmit = amendment.trim().length > 0 && !amending;
+
+  const handleSubmit = () => {
+    if (!canSubmit) return;
+    onAmend(amendment.trim()).then(() => setAmendment('')).catch(() => {});
+  };
+
+  return (
+    <div className="amendments-panel">
+      <div className="amendments-header">
+        <div className="amendments-title">Amend this RAMS</div>
+        <div className="amendments-copy">
+          Ask SafeFlow to update the draft. It will use the current RAMS, your instruction, and any uploaded site photos.
+        </div>
+      </div>
+      <div className="amendments-body">
+        <div className="field" style={{ marginBottom: 0 }}>
+          <label>Amendment request</label>
+          <textarea
+            placeholder="e.g. Add stronger underground services controls, include a banksman for reversing plant, add a spill response hazard, and make the method statement more specific to the photos."
+            value={amendment}
+            onChange={e => setAmendment(e.target.value)}
+            disabled={amending}
+          />
+        </div>
+        <div className="amendments-actions">
+          <button className="generate-btn" onClick={handleSubmit} disabled={!canSubmit} style={{ width: 'auto', padding: '12px 20px' }}>
+            {amending ? (
+              <>
+                <span className="loading-ring" style={{ width: 14, height: 14, borderWidth: 2, margin: 0 }} />
+                Amending RAMS
+              </>
+            ) : (
+              <>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 20h9"/>
+                  <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>
+                </svg>
+                Apply amendment
+              </>
+            )}
+          </button>
+          <div className="amendments-note">
+            {photoCount > 0
+              ? `${photoCount} site photo${photoCount === 1 ? '' : 's'} included in the amendment call.`
+              : 'No site photos attached; amendments will use the written job details and current RAMS.'}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RamsDocument({ data, onReset, onExportPDF, onExportWord, onExportDrive, onExportOneDrive, onAmend, amending, photoCount }) {
   const today = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' });
   const refNum = `SF-${Date.now().toString().slice(-6)}`;
 
@@ -773,6 +1142,8 @@ function RamsDocument({ data, onReset, onExportPDF, onExportWord, onExportDrive,
           </button>
         </div>
       </div>
+
+      {onAmend && <AmendmentsPanel onAmend={onAmend} amending={amending} photoCount={photoCount} />}
 
       <div className="rams-doc" id="rams-document">
         <div className="rams-doc-header">
@@ -964,10 +1335,13 @@ export default function SafeFlowRAMS() {
   const [customTask, setCustomTask] = useState('');
   const [location, setLocation] = useState('');
   const [additionalInfo, setAdditionalInfo] = useState('');
+  const [jobDocuments, setJobDocuments] = useState([]);
   const [loading, setLoading] = useState(false);
   const [loadingStep, setLoadingStep] = useState(0);
   const [ramsData, setRamsData] = useState(null);
   const [error, setError] = useState('');
+  const [criticalGaps, setCriticalGaps] = useState([]);
+  const [amending, setAmending] = useState(false);
   const [showSettings, setShowSettings]     = useState(false);
   const [showClarifying, setShowClarifying] = useState(false);
   const [user, setUser]                     = useState(null);
@@ -977,6 +1351,12 @@ export default function SafeFlowRAMS() {
   const [activeTemplate, setActiveTemplate] = useState(null);
 
   useEffect(() => {
+    if (!isSupabaseConfigured) {
+      setUser(DEMO_USER);
+      setAuthLoading(false);
+      return;
+    }
+
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
       setAuthLoading(false);
@@ -988,7 +1368,7 @@ export default function SafeFlowRAMS() {
   }, []);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || !isSupabaseConfigured) return;
     supabase.from('company_profiles').select('data').eq('user_id', user.id).single()
       .then(({ data }) => { if (data?.data) setProfile(p => ({ ...p, ...data.data })); });
     supabase.from('procedures').select('*').eq('user_id', user.id).order('created_at')
@@ -1005,21 +1385,36 @@ export default function SafeFlowRAMS() {
     setPhotos(prev => prev.filter((_, i) => i !== index));
   }, []);
 
-  const buildPrompt = (answers) => {
+  const addJobDocument = useCallback((document) => {
+    setJobDocuments(prev => [...prev, document]);
+  }, []);
+
+  const removeJobDocument = useCallback((id) => {
+    setJobDocuments(prev => prev.filter(doc => doc.id !== id));
+  }, []);
+
+  const buildPrompt = (answers, criticalRules) => {
     const task = taskType === 'Other (describe below)' ? customTask : taskType;
+    const hasPhotos = photos.length > 0;
     const guidance = filterGuidanceForTask(task, 14);
     const guidanceBlock = guidance.length
       ? `\nRELEVANT HSE GUIDANCE (select the most applicable for the references field):\n${guidance.map(g => `- ${g.title}: ${g.url}`).join('\n')}\n`
       : '';
-    return `You are an expert HSQE Manager with 15+ years of experience producing Risk Assessment and Method Statements (RAMS) for UK field contractors. You must produce a comprehensive, compliant RAMS document based on the site photos provided and the task description below.
+    return `You are an expert HSQE Manager with 15+ years of experience producing Risk Assessment and Method Statements (RAMS) for UK field contractors. You must produce a comprehensive, compliant RAMS document based on the ${hasPhotos ? 'site photos provided and the ' : ''}task description below.
 
 Task Type: ${task}
+${customTask.trim() && taskType !== 'Other (describe below)' ? `Task Description: ${customTask.trim()}` : ''}
 ${location ? `Site Location: ${location}` : ''}
 ${additionalInfo ? `Additional Information: ${additionalInfo}` : ''}
+${!hasPhotos ? 'Site Photos: None provided. Do not invent visual observations; state assumptions clearly and base the RAMS on the written job details.' : ''}
 ${buildAnswersContext(answers)}${injectProfileIntoPrompt(profile)}
 ${injectProceduresIntoPrompt(procedures, task)}
+${injectJobDocumentsIntoPrompt(jobDocuments)}
+${buildCriticalRiskPrompt(criticalRules)}
 ${guidanceBlock}
-Analyse the site photos carefully and identify all visible hazards, site conditions, environmental factors, and anything relevant to safe working.
+${hasPhotos
+  ? 'Analyse the site photos carefully and identify all visible hazards, site conditions, environmental factors, and anything relevant to safe working.'
+  : 'Analyse the written job details carefully and identify likely hazards, required assumptions, site conditions to verify, environmental factors, and anything relevant to safe working.'}
 
 Respond ONLY with a valid JSON object in exactly this structure, no preamble, no markdown:
 
@@ -1027,7 +1422,7 @@ Respond ONLY with a valid JSON object in exactly this structure, no preamble, no
   "taskType": "${task}",
   "location": "${location || 'As surveyed'}",
   "scopeOfWorks": "2-3 sentences describing the full scope of the works to be undertaken",
-  "siteObservations": "3-5 sentences describing what was observed in the site photos — ground conditions, access, proximity hazards, environmental factors, existing infrastructure, overhead/underground services visible, any specific risk factors identified from the photos",
+  "siteObservations": "${hasPhotos ? '3-5 sentences describing what was observed in the site photos — ground conditions, access, proximity hazards, environmental factors, existing infrastructure, overhead/underground services visible, any specific risk factors identified from the photos' : '3-5 sentences summarising the supplied job details, assumptions made because no photos were provided, and site conditions that must be verified before work starts'}",
   "hazards": [
     {
       "hazard": "Hazard name",
@@ -1056,18 +1451,57 @@ Respond ONLY with a valid JSON object in exactly this structure, no preamble, no
   ]
 }
 
-Produce at least 6 hazards. Use the 5×5 risk matrix: Likelihood (1=Rare, 2=Unlikely, 3=Possible, 4=Likely, 5=Almost Certain) × Severity (1=Negligible, 2=Minor, 3=Moderate, 4=Major, 5=Catastrophic) = Risk Rating (1-6=Low, 7-14=Medium, 15-25=High). Be specific and technical — this is a legally significant document. Reference relevant UK regulations (HASAWA 1974, MHSWR 1999, CDM 2015, RIDDOR, COSHH 2002, Environmental Protection Act 1990, etc.). PPE minimum 6 items. trainingRequirements must list each individual certification, competency card, or course required — one item per entry. For references: select 4-8 HSE documents from the list provided that are most directly applicable to this specific task — use exact titles and URLs from the list.`;
+Produce at least 6 hazards. Include every critical risk requirement above as an explicit hazard/control entry unless it is genuinely irrelevant, in which case state why in the relevant section. Use the 5×5 risk matrix: Likelihood (1=Rare, 2=Unlikely, 3=Possible, 4=Likely, 5=Almost Certain) × Severity (1=Negligible, 2=Minor, 3=Moderate, 4=Major, 5=Catastrophic) = Risk Rating (1-6=Low, 7-14=Medium, 15-25=High). Be specific and technical — this is a legally significant document. Reference relevant UK regulations (HASAWA 1974, MHSWR 1999, CDM 2015, RIDDOR, COSHH 2002, Environmental Protection Act 1990, etc.). PPE minimum 6 items. trainingRequirements must list each individual certification, competency card, or course required — one item per entry. For references: select 4-8 HSE documents from the list provided that are most directly applicable to this specific task — use exact titles and URLs from the list.`;
   };
 
-  const OPENAI_API_KEY = process.env.NEXT_PUBLIC_OPENAI_API_KEY;
+  const buildAmendmentPrompt = (amendmentRequest, currentRams, criticalRules) => {
+    const task = taskType === 'Other (describe below)' ? customTask : taskType || currentRams.taskType;
+    const hasPhotos = photos.length > 0;
+    return `You are an expert HSQE Manager amending an existing UK RAMS draft.
+
+Use ${hasPhotos ? 'the uploaded site photos again, ' : ''}the current RAMS JSON, and the amendment request below. Return a complete amended RAMS JSON object, not a partial patch.
+
+Task Type: ${task || currentRams.taskType || 'As drafted'}
+${customTask.trim() ? `Task Description: ${customTask.trim()}` : ''}
+${location ? `Site Location: ${location}` : currentRams.location ? `Site Location: ${currentRams.location}` : ''}
+${additionalInfo ? `Additional Information: ${additionalInfo}` : ''}
+${!hasPhotos ? 'Site Photos: None provided. Do not invent visual observations; preserve or update assumptions clearly.' : ''}
+${injectProfileIntoPrompt(profile)}
+${injectProceduresIntoPrompt(procedures, task || currentRams.taskType)}
+${injectJobDocumentsIntoPrompt(jobDocuments)}
+${buildCriticalRiskPrompt(criticalRules)}
+
+AMENDMENT REQUEST:
+${amendmentRequest}
+
+CURRENT RAMS JSON:
+${JSON.stringify(currentRams, null, 2)}
+
+Respond ONLY with a valid JSON object using the same structure as the current RAMS. Keep useful existing content, update anything affected by the amendment, and add any hazards, method steps, PPE, training, environmental, COSHH, refuelling, emergency or reference changes required by the amendment${hasPhotos ? ' and photos' : ''}. Do not remove critical controls unless the amendment explicitly asks for removal and the removal is safe and justified.`;
+  };
+
+  const buildImageContents = () => photos.map(p => ({
+    type: 'image_url',
+    image_url: {
+      url: p.url,
+      detail: 'high'
+    }
+  }));
 
   const generateRAMS = async (answers = {}) => {
     const task = taskType === 'Other (describe below)' ? customTask : taskType;
-    if (!task || photos.length === 0) return;
+    if (!task) return;
+    const criticalRules = detectCriticalRiskRules({
+      taskType: task,
+      taskDescription: customTask,
+      additionalInfo: [additionalInfo, summariseJobDocuments(jobDocuments)].filter(Boolean).join('\n'),
+      answers,
+    });
 
     setShowClarifying(false);
     setLoading(true);
     setError('');
+    setCriticalGaps([]);
     setLoadingStep(0);
 
     const stepInterval = setInterval(() => {
@@ -1075,55 +1509,27 @@ Produce at least 6 hazards. Use the 5×5 risk matrix: Likelihood (1=Rare, 2=Unli
     }, 1800);
 
     try {
-      // Build OpenAI vision message content
-      const imageContents = photos.map(p => ({
-        type: 'image_url',
-        image_url: {
-          url: p.url, // base64 data URL — OpenAI accepts this directly
-          detail: 'high'
-        }
-      }));
-
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${OPENAI_API_KEY}`
-        },
-        body: JSON.stringify({
-          model: 'gpt-4o',
-          max_tokens: 4000,
-          messages: [{
-            role: 'user',
-            content: [
-              ...imageContents,
-              { type: 'text', text: buildPrompt(answers) }
-            ]
-          }]
-        })
+      const data = await callOpenAIChat({
+        model: 'gpt-4o',
+        max_tokens: 4000,
+        messages: [{
+          role: 'user',
+          content: [
+            ...buildImageContents(),
+            { type: 'text', text: buildPrompt(answers, criticalRules) }
+          ]
+        }]
       });
 
-      const data = await response.json();
-
-      if (data.error) {
-        throw new Error(data.error.message || 'OpenAI API error');
-      }
-
       const text = data.choices?.[0]?.message?.content || '';
-
-      let parsed;
-      try {
-        const clean = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-        parsed = JSON.parse(clean);
-      } catch {
-        throw new Error('Could not parse the generated RAMS. Please try again.');
-      }
+      const parsed = parseJsonResponse(text, 'Could not parse the generated RAMS. Please try again.');
 
       clearInterval(stepInterval);
       setLoadingStep(3);
       await new Promise(r => setTimeout(r, 400));
       setRamsData(parsed);
-      if (user) {
+      setCriticalGaps(validateCriticalRisks(parsed, criticalRules));
+      if (user && isSupabaseConfigured) {
         supabase.from('rams_documents').insert({
           user_id: user.id,
           task_type: parsed.taskType,
@@ -1139,139 +1545,61 @@ Produce at least 6 hazards. Use the 5×5 risk matrix: Likelihood (1=Rare, 2=Unli
     }
   };
 
+  const handleAmendRAMS = async (amendmentRequest) => {
+    if (!ramsData || !amendmentRequest.trim()) return;
+    const task = taskType === 'Other (describe below)' ? customTask : taskType || ramsData.taskType;
+    const criticalRules = detectCriticalRiskRules({
+      taskType: task,
+      taskDescription: customTask || ramsData.scopeOfWorks || '',
+      additionalInfo: [additionalInfo, ramsData.siteObservations, amendmentRequest, summariseJobDocuments(jobDocuments)].filter(Boolean).join('\n'),
+      answers: {},
+    });
+
+    setAmending(true);
+    setError('');
+
+    try {
+      const data = await callOpenAIChat({
+        model: 'gpt-4o',
+        max_tokens: 4500,
+        messages: [{
+          role: 'user',
+          content: [
+            ...buildImageContents(),
+            { type: 'text', text: buildAmendmentPrompt(amendmentRequest, ramsData, criticalRules) }
+          ]
+        }]
+      });
+
+      const text = data.choices?.[0]?.message?.content || '';
+      const amended = parseJsonResponse(text, 'Could not parse the amended RAMS. Please try again.');
+      setRamsData(amended);
+      setCriticalGaps(validateCriticalRisks(amended, criticalRules));
+      if (user && isSupabaseConfigured) {
+        supabase.from('rams_documents').insert({
+          user_id: user.id,
+          task_type: amended.taskType,
+          location: amended.location,
+          data: amended,
+        }).then(() => {});
+      }
+    } catch (err) {
+      setError(err.message || 'Could not amend the RAMS. Please try again.');
+      throw err;
+    } finally {
+      setAmending(false);
+    }
+  };
+
   const handleExportPDF = () => {
-    const printContent = document.getElementById('rams-document');
     const win = window.open('', '_blank');
-    win.document.write(`
-      <html><head><title>RAMS Document</title>
-      <style>
-        body { font-family: Arial, sans-serif; color: #111; background: white; padding: 40px; max-width: 900px; margin: 0 auto; }
-        h1 { font-size: 22px; margin-bottom: 4px; }
-        .meta { font-size: 12px; color: #666; margin-bottom: 24px; display: flex; gap: 20px; }
-        .status { font-size: 11px; background: #fff3cd; border: 1px solid #ffc107; padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
-        .section { margin-bottom: 24px; page-break-inside: avoid; }
-        .section-title { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #0a7c4e; margin-bottom: 10px; border-bottom: 1px solid #e5e7eb; padding-bottom: 6px; }
-        p, td { font-size: 13px; line-height: 1.6; color: #333; }
-        table { width: 100%; border-collapse: collapse; font-size: 12px; }
-        th { text-align: left; padding: 7px 10px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: #666; border-bottom: 2px solid #e5e7eb; }
-        td { padding: 8px 10px; border-bottom: 1px solid #f3f4f6; vertical-align: top; }
-        .risk-high { background: #fee2e2; color: #dc2626; padding: 2px 7px; border-radius: 3px; font-size: 10px; font-weight: 600; }
-        .risk-medium { background: #fef3c7; color: #d97706; padding: 2px 7px; border-radius: 3px; font-size: 10px; font-weight: 600; }
-        .risk-low { background: #d1fae5; color: #059669; padding: 2px 7px; border-radius: 3px; font-size: 10px; font-weight: 600; }
-        .ppe-grid { display: flex; flex-wrap: wrap; gap: 6px; }
-        .ppe-item { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 5px; padding: 4px 10px; font-size: 12px; }
-        .sign-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
-        .sign-box { border: 1px solid #e5e7eb; border-radius: 6px; padding: 12px; }
-        .sign-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: #9ca3af; margin-bottom: 6px; }
-        .sign-line { border-top: 1px solid #e5e7eb; margin-top: 40px; }
-        pre { white-space: pre-wrap; font-family: Arial, sans-serif; font-size: 13px; line-height: 1.6; }
-        @media print { body { padding: 20px; } }
-      </style></head><body>
-      <h1>${ramsData.taskType} — Risk Assessment & Method Statement</h1>
-      <div class="meta">
-        <span>Date: ${new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' })}</span>
-        <span>Location: ${ramsData.location}</span>
-        <span>Ref: SF-${Date.now().toString().slice(-6)}</span>
-        ${ramsData.reviewDate ? `<span>Review by: ${ramsData.reviewDate}</span>` : ''}
-      </div>
-      <div class="status">⚠ DRAFT — REVIEW AND SIGN-OFF REQUIRED BEFORE USE</div>
-
-      <div class="section">
-        <div class="section-title">Scope of Works</div>
-        <p>${ramsData.scopeOfWorks}</p>
-      </div>
-
-      <div class="section">
-        <div class="section-title">Site Observations</div>
-        <p>${ramsData.siteObservations}</p>
-      </div>
-
-      <div class="section">
-        <div class="section-title">Hazard Register & Risk Assessment</div>
-        <table>
-          <thead><tr><th>Hazard</th><th>Those at Risk</th><th>Initial Risk (L×S)</th><th>Controls</th><th>Residual Risk (L×S)</th></tr></thead>
-          <tbody>
-            ${ramsData.hazards.map(h => `<tr>
-              <td>${h.hazard}</td>
-              <td>${h.thoseAtRisk}</td>
-              <td><span class="risk-${h.initialRisk.toLowerCase()}">${h.initialRisk}</span>${h.initialLikelihood ? `<br><span style="font-size:10px;color:#666">${h.initialLikelihood}×${h.initialSeverity}=${h.initialLikelihood * h.initialSeverity}</span>` : ''}</td>
-              <td>${h.controls}</td>
-              <td><span class="risk-${h.residualRisk.toLowerCase()}">${h.residualRisk}</span>${h.residualLikelihood ? `<br><span style="font-size:10px;color:#666">${h.residualLikelihood}×${h.residualSeverity}=${h.residualLikelihood * h.residualSeverity}</span>` : ''}</td>
-            </tr>`).join('')}
-          </tbody>
-        </table>
-      </div>
-
-      <div class="section">
-        <div class="section-title">Method Statement</div>
-        <pre>${ramsData.methodStatement}</pre>
-      </div>
-
-      <div class="section">
-        <div class="section-title">Personal Protective Equipment</div>
-        <div class="ppe-grid">
-          ${ramsData.ppe.map(item => `<div class="ppe-item">✓ ${item}</div>`).join('')}
-        </div>
-      </div>
-
-      <div class="section">
-        <div class="section-title">Emergency Arrangements</div>
-        <pre>${ramsData.emergencyArrangements}</pre>
-      </div>
-
-      <div class="section">
-        <div class="section-title">Competencies Required</div>
-        <p>${ramsData.competencies}</p>
-      </div>
-
-      ${ramsData.trainingRequirements && ramsData.trainingRequirements.length ? `
-      <div class="section">
-        <div class="section-title">Training Requirements</div>
-        <div class="ppe-grid">
-          ${ramsData.trainingRequirements.map(item => `<div class="ppe-item">✓ ${item}</div>`).join('')}
-        </div>
-      </div>` : ''}
-
-      ${ramsData.welfareArrangements ? `
-      <div class="section">
-        <div class="section-title">Welfare Arrangements</div>
-        <pre>${ramsData.welfareArrangements}</pre>
-      </div>` : ''}
-
-      ${ramsData.environmentalControls ? `
-      <div class="section">
-        <div class="section-title">Environmental Controls</div>
-        <pre>${ramsData.environmentalControls}</pre>
-      </div>` : ''}
-
-      ${ramsData.coshhAssessment ? `
-      <div class="section">
-        <div class="section-title">COSHH Assessment</div>
-        <pre>${ramsData.coshhAssessment}</pre>
-      </div>` : ''}
-
-      ${ramsData.refuellingProcedure ? `
-      <div class="section">
-        <div class="section-title">Refuelling Procedure</div>
-        <pre>${ramsData.refuellingProcedure}</pre>
-      </div>` : ''}
-
-      <div class="section">
-        <div class="section-title">Sign-off</div>
-        <div class="sign-grid">
-          ${['Prepared by', 'Reviewed by', 'Authorised by'].map(label => `
-            <div class="sign-box">
-              <div class="sign-label">${label}</div>
-              <div style="font-size:12px;color:#666;margin-bottom:3px">Name: _______________</div>
-              <div style="font-size:12px;color:#666;margin-bottom:3px">Role: ________________</div>
-              <div style="font-size:12px;color:#666;margin-bottom:3px">Date: ________________</div>
-              <div class="sign-line"></div>
-              <div style="font-size:10px;color:#ccc;margin-top:4px">Signature</div>
-            </div>`).join('')}
-        </div>
-      </div>
-      </body></html>
-    `);
+    if (!win) {
+      setError('Could not open the print window. Check popup blocking and try again.');
+      return;
+    }
+    const refNum = `SF-${Date.now().toString().slice(-6)}`;
+    const issueDate = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' });
+    populateRamsPdfTemplate(win.document, ramsData, { profile, refNum, issueDate });
     win.document.close();
     win.focus();
     setTimeout(() => win.print(), 500);
@@ -1280,6 +1608,9 @@ Produce at least 6 hazards. Use the 5×5 risk matrix: Likelihood (1=Rare, 2=Unli
   const handleExportWord = async () => {
     if (!activeTemplate || !ramsData) return;
     try {
+      if (!isSupabaseConfigured) {
+        throw new Error('Word template export requires Supabase to be configured.');
+      }
       const { data: fileData, error } = await supabase.storage.from('templates').download(activeTemplate.storage_path);
       if (error) throw error;
       const arrayBuffer = await fileData.arrayBuffer();
@@ -1300,7 +1631,7 @@ Produce at least 6 hazards. Use the 5×5 risk matrix: Likelihood (1=Rare, 2=Unli
     alert('OneDrive integration requires Microsoft OAuth setup. In the full product, this saves directly to your connected OneDrive folder in your own template.');
   };
 
-  const canGenerate = photos.length > 0 && (taskType && taskType !== 'Other (describe below)' || customTask.trim());
+  const canGenerate = Boolean(taskType && taskType !== 'Other (describe below)' || customTask.trim());
 
   if (authLoading) {
     return (
@@ -1314,7 +1645,7 @@ Produce at least 6 hazards. Use the 5×5 risk matrix: Likelihood (1=Rare, 2=Unli
   }
 
   if (!user) {
-    return <AuthScreen />;
+    return <AuthScreen onDemo={() => setUser(DEMO_USER)} />;
   }
 
   return (
@@ -1346,7 +1677,7 @@ Produce at least 6 hazards. Use the 5×5 risk matrix: Likelihood (1=Rare, 2=Unli
               </svg>
             </button>
             <button
-              onClick={() => supabase.auth.signOut()}
+              onClick={() => isSupabaseConfigured && supabase.auth.signOut()}
               title="Sign out"
               style={{ background: 'none', border: '1.5px solid #2a2d35', borderRadius: 8, color: '#555', cursor: 'pointer', padding: '6px 10px', display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontFamily: "'DM Sans', sans-serif", transition: 'all 0.15s' }}
               onMouseEnter={e => { e.currentTarget.style.borderColor = '#ef4444'; e.currentTarget.style.color = '#ef4444'; }}
@@ -1365,73 +1696,99 @@ Produce at least 6 hazards. Use the 5×5 risk matrix: Likelihood (1=Rare, 2=Unli
         {!ramsData && !loading && (
           <>
             <div className="hero">
-              <h1>Take photos.<br /><em>Get your RAMS.</em></h1>
-              <p>Upload site photos and select your task type. SafeFlow analyses what it sees and generates a compliant Risk Assessment and Method Statement in under a minute.</p>
+              <h1>Describe the job.<br /><em>Get your RAMS.</em></h1>
+              <p>Add site photos when you have them, or generate from the written task details. SafeFlow builds a compliant Risk Assessment and Method Statement from the context provided.</p>
             </div>
 
             <div className="divider" />
 
-            <div className="section-label">Step 1 — Site Photos</div>
-            <PhotoUpload photos={photos} onAdd={addPhoto} onRemove={removePhoto} />
-
-            <div style={{ marginTop: 32 }}>
-              <div className="section-label">Step 2 — Task Details</div>
-
-              <div className="field">
-                <label>Task Type</label>
-                <select value={taskType} onChange={e => setTaskType(e.target.value)}>
-                  <option value="">Select task type…</option>
-                  {TASK_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
+            <div className="setup-panel">
+              <div className="setup-panel-header">
+                <div className="setup-step">Step 1 of 3 — Site Photos</div>
+                <div className="setup-title">Upload the site</div>
+                <div className="setup-copy">Optional, but useful. Add photos that show access, work areas, nearby hazards, plant, public interfaces, and anything that could affect the RAMS.</div>
               </div>
-
-              {taskType === 'Other (describe below)' && (
-                <div className="field">
-                  <label>Describe the task</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Installation of temporary fencing along live carriageway"
-                    value={customTask}
-                    onChange={e => setCustomTask(e.target.value)}
-                  />
-                </div>
-              )}
-
-              <div className="field">
-                <label>Site Location <span style={{ color: '#555', fontWeight: 400 }}>(optional)</span></label>
-                <input
-                  type="text"
-                  placeholder="e.g. Unit 4, Industrial Estate, Birmingham B12 4AB"
-                  value={location}
-                  onChange={e => setLocation(e.target.value)}
-                />
-              </div>
-
-              <div className="field">
-                <label>Additional Information <span style={{ color: '#555', fontWeight: 400 }}>(optional)</span></label>
-                <textarea
-                  placeholder="Any additional context — client requirements, specific hazards you're aware of, number of operatives, duration of works…"
-                  value={additionalInfo}
-                  onChange={e => setAdditionalInfo(e.target.value)}
-                />
+              <div className="setup-panel-body">
+                <PhotoUpload photos={photos} onAdd={addPhoto} onRemove={removePhoto} />
               </div>
             </div>
 
-            {!showClarifying && (
-              <button className="generate-btn" onClick={() => setShowClarifying(true)} disabled={!canGenerate}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
-                </svg>
-                Generate RAMS Document
-              </button>
-            )}
+            <div className="setup-panel">
+              <div className="setup-panel-header">
+                <div className="setup-step">Step 2 of 3 — Task Details</div>
+                <div className="setup-title">Describe the work</div>
+                <div className="setup-copy">These details are combined with the photos before SafeFlow asks the final clarifying questions.</div>
+              </div>
+              <div className="setup-panel-body">
+                <div className="field">
+                  <label>Task Type</label>
+                  <select value={taskType} onChange={e => setTaskType(e.target.value)}>
+                    <option value="">Select task type…</option>
+                    {TASK_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </div>
+
+                <div className="field">
+                  <label>Tell us about the job {taskType !== 'Other (describe below)' && <span style={{ color: '#555', fontWeight: 400 }}>(optional)</span>}</label>
+                  <textarea
+                    placeholder="Describe the job in your own words. Include what is being done, plant or tools involved, access constraints, people nearby, known hazards, programme, permits, and any client requirements."
+                    value={customTask}
+                    onChange={e => setCustomTask(e.target.value)}
+                    style={{ minHeight: 130 }}
+                  />
+                </div>
+
+                <div className="field">
+                  <label>Site Location <span style={{ color: '#555', fontWeight: 400 }}>(optional)</span></label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Unit 4, Industrial Estate, Birmingham B12 4AB"
+                    value={location}
+                    onChange={e => setLocation(e.target.value)}
+                  />
+                </div>
+
+                <div className="field" style={{ marginBottom: 0 }}>
+                  <label>Additional Information <span style={{ color: '#555', fontWeight: 400 }}>(optional)</span></label>
+                  <textarea
+                    placeholder="Any additional context — client requirements, specific hazards you're aware of, number of operatives, duration of works…"
+                    value={additionalInfo}
+                    onChange={e => setAdditionalInfo(e.target.value)}
+                  />
+                </div>
+
+                <div className="field" style={{ marginTop: 22, marginBottom: 0 }}>
+                  <label>Job Procedures & Documents <span style={{ color: '#555', fontWeight: 400 }}>(optional)</span></label>
+                  <JobDocumentUpload documents={jobDocuments} onAdd={addJobDocument} onRemove={removeJobDocument} />
+                </div>
+              </div>
+              {!showClarifying && (
+                <div className="setup-panel-footer">
+                  <button className="generate-btn" onClick={() => setShowClarifying(true)} disabled={!canGenerate} style={{ width: 'auto', padding: '14px 28px' }}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+                    </svg>
+                    Continue to Questions
+                  </button>
+                  {!canGenerate && (
+                    <div style={{ fontSize: 12, color: '#555' }}>
+                      Choose a task type or describe the job.
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
 
             {showClarifying && (
               <ClarifyingQuestions
                 taskType={taskType === 'Other (describe below)' ? customTask || null : taskType}
                 location={location}
-                additionalInfo={additionalInfo}
-                apiKey={OPENAI_API_KEY}
+                additionalInfo={[
+                  taskType !== 'Other (describe below)' && customTask.trim() ? `Task description: ${customTask.trim()}` : '',
+                  additionalInfo,
+                  summariseJobDocuments(jobDocuments),
+                ].filter(Boolean).join('\n')}
+                photos={photos}
                 onSubmit={(answers) => generateRAMS(answers)}
                 onBack={() => setShowClarifying(false)}
               />
@@ -1445,20 +1802,35 @@ Produce at least 6 hazards. Use the 5×5 risk matrix: Likelihood (1=Rare, 2=Unli
 
         {ramsData && !loading && (
           <>
+            <CriticalRiskPanel gaps={criticalGaps} />
             <RamsDocument
               data={ramsData}
-              onReset={() => { setRamsData(null); setPhotos([]); setTaskType(''); setCustomTask(''); setLocation(''); setAdditionalInfo(''); setShowClarifying(false); }}
+              onReset={() => { setRamsData(null); setCriticalGaps([]); setAmending(false); setPhotos([]); setJobDocuments([]); setTaskType(''); setCustomTask(''); setLocation(''); setAdditionalInfo(''); setShowClarifying(false); }}
               onExportPDF={handleExportPDF}
               onExportWord={activeTemplate ? handleExportWord : null}
               onExportDrive={handleExportDrive}
               onExportOneDrive={handleExportOneDrive}
+              onAmend={handleAmendRAMS}
+              amending={amending}
+              photoCount={photos.length}
             />
+            {error && <div className="error-box">⚠ {error}</div>}
             <CompliancePanel
               ramsData={ramsData}
               profile={profile}
-              procedures={procedures}
-              apiKey={OPENAI_API_KEY}
-              onUpdateRams={setRamsData}
+              procedures={[
+                ...procedures,
+                ...jobDocuments.map((doc, index) => ({
+                  id: doc.id,
+                  title: doc.title || doc.fileName,
+                  code: `JOB-DOC-${index + 1}`,
+                  category: '',
+                  text: doc.text,
+                  char_count: doc.charCount,
+                  created_at: new Date().toISOString(),
+                })),
+              ]}
+              onUpdateRams={(updated) => { setRamsData(updated); setCriticalGaps([]); }}
             />
           </>
         )}

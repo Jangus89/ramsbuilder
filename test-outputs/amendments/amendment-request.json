@@ -1,0 +1,70 @@
+{
+  "amendmentRequest": "Add the missing environmental spill / pollution risk as an explicit hazard, strengthen refuelling controls, and make sure spill kits, drip trays, drain protection, fuel storage and escalation procedures are included.",
+  "imagePaths": [
+    "test-outputs/mobile-plant/images/excavator-trench.jpg",
+    "test-outputs/mobile-plant/images/pipeline-trench.jpg",
+    "test-outputs/mobile-plant/images/mobile-plant-grading.jpg"
+  ],
+  "criticalRules": [
+    {
+      "id": "ground-disturbance-services",
+      "title": "Ground Disturbance / Underground Services"
+    },
+    {
+      "id": "live-traffic-highways",
+      "title": "Live Traffic / Highway Interface"
+    },
+    {
+      "id": "public-interface",
+      "title": "Public Interface"
+    },
+    {
+      "id": "overhead-services",
+      "title": "Overhead Services"
+    },
+    {
+      "id": "silica-dust",
+      "title": "Silica / Dust"
+    },
+    {
+      "id": "noise-vibration",
+      "title": "Noise / Vibration"
+    },
+    {
+      "id": "coshh-substances",
+      "title": "COSHH Substances"
+    },
+    {
+      "id": "plant-pedestrian-interface",
+      "title": "Plant / Pedestrian Interface"
+    },
+    {
+      "id": "machinery-work-equipment",
+      "title": "Machinery / Work Equipment"
+    },
+    {
+      "id": "mobile-plant",
+      "title": "Mobile Plant"
+    },
+    {
+      "id": "excavation-collapse",
+      "title": "Excavation Collapse / Ground Instability"
+    },
+    {
+      "id": "water-contamination",
+      "title": "Water / Drowning / Contamination"
+    },
+    {
+      "id": "environmental-spill",
+      "title": "Environmental Spill / Pollution"
+    },
+    {
+      "id": "weather-exposure",
+      "title": "Weather / Temperature Exposure"
+    }
+  ],
+  "promptSummary": {
+    "imageCount": 3,
+    "model": "gpt-4o"
+  }
+}

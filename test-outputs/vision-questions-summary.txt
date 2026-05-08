@@ -1,0 +1,33 @@
+Vision question generation summary
+
+Question count: 5
+
+1. What are the detailed site conditions, such as weather and ground stability, at the local test site?
+   - Dry and stable
+   - Wet and muddy
+   - Unstable surface
+   - Windy and dusty
+
+2. What specific traffic control measures will be in place during the road repair works?
+   - Barriers only
+   - Barriers and traffic lights
+   - Road closure
+   - Flaggers
+
+3. What personal protective equipment (PPE) is required for workers performing the saw cutting and road repair?
+   - High-visibility vests only
+   - High-visibility vests and helmets
+   - Full PPE including masks and gloves
+   - No PPE required
+
+4. What is the emergency response plan in case of accidents or injuries during the task?
+   - First aid kit only
+   - Onsite first responder
+   - Nearby hospital arrangement
+   - No plan
+
+5. Has the equipment, such as handheld concrete saws and small plant, been recently serviced and checked for safety?
+   - Yes, fully serviced
+   - Partially serviced
+   - Not serviced yet
+   - Unknown
