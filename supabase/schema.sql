@@ -382,3 +382,70 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.org_invites TO authenticate
 GRANT SELECT, INSERT ON TABLE public.signatures TO authenticated;
 GRANT SELECT, INSERT ON TABLE public.audit_log TO authenticated;
 GRANT SELECT, INSERT ON TABLE public.document_diffs TO authenticated;
+
+-- ============================================================
+-- Layer 3: Share links, acknowledgements, inputs column.
+-- ============================================================
+
+ALTER TABLE rams_documents
+  ADD COLUMN IF NOT EXISTS inputs JSONB;
+
+CREATE TABLE IF NOT EXISTS share_links (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  document_id  UUID REFERENCES rams_documents(id) ON DELETE CASCADE,
+  token        TEXT UNIQUE NOT NULL DEFAULT encode(gen_random_bytes(16), 'hex'),
+  created_by   UUID REFERENCES auth.users(id),
+  created_at   TIMESTAMPTZ DEFAULT NOW(),
+  expires_at   TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS share_links_token_idx ON share_links(token);
+CREATE INDEX IF NOT EXISTS share_links_document_id_idx ON share_links(document_id);
+
+ALTER TABLE share_links ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "share links public read by token" ON share_links;
+CREATE POLICY "share links public read by token"
+  ON share_links FOR SELECT
+  USING (true);
+
+DROP POLICY IF EXISTS "share links owner insert delete" ON share_links;
+CREATE POLICY "share links owner insert delete"
+  ON share_links FOR ALL
+  USING (created_by = auth.uid())
+  WITH CHECK (created_by = auth.uid());
+
+CREATE TABLE IF NOT EXISTS acknowledgements (
+  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  share_token       TEXT NOT NULL,
+  document_id       UUID REFERENCES rams_documents(id),
+  recipient_name    TEXT NOT NULL,
+  recipient_company TEXT,
+  ip_address        TEXT,
+  user_agent        TEXT,
+  acknowledged_at   TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS acknowledgements_document_id_idx ON acknowledgements(document_id);
+CREATE INDEX IF NOT EXISTS acknowledgements_share_token_idx ON acknowledgements(share_token);
+
+ALTER TABLE acknowledgements ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "acknowledgements public insert" ON acknowledgements;
+CREATE POLICY "acknowledgements public insert"
+  ON acknowledgements FOR INSERT
+  WITH CHECK (true);
+
+DROP POLICY IF EXISTS "acknowledgements owner read" ON acknowledgements;
+CREATE POLICY "acknowledgements owner read"
+  ON acknowledgements FOR SELECT
+  USING (EXISTS (
+    SELECT 1 FROM rams_documents d
+    WHERE d.id = acknowledgements.document_id AND d.user_id = auth.uid()
+  ));
+
+GRANT SELECT, INSERT, DELETE ON TABLE public.share_links TO authenticated;
+GRANT SELECT ON TABLE public.share_links TO anon;
+GRANT INSERT ON TABLE public.acknowledgements TO anon;
+GRANT INSERT ON TABLE public.acknowledgements TO authenticated;
+GRANT SELECT ON TABLE public.acknowledgements TO authenticated;
