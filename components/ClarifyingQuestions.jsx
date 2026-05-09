@@ -2,6 +2,45 @@
 import { useState, useEffect } from 'react';
 import { callOpenAIChat, parseJsonResponse } from '../lib/openaiClient';
 
+function answerText(value) {
+  if (!value) return '';
+  if (Array.isArray(value.answer)) return value.answer.join('; ');
+  if (Array.isArray(value.selections) || value.other) {
+    return [
+      ...(value.selections || []),
+      value.other?.trim() ? `Other: ${value.other.trim()}` : '',
+    ].filter(Boolean).join('; ');
+  }
+  return value.answer || '';
+}
+
+function normaliseQuestions(parsed) {
+  const rawQuestions = Array.isArray(parsed) ? parsed : parsed?.questions;
+  if (!Array.isArray(rawQuestions) || rawQuestions.length === 0) {
+    throw new Error('Could not generate clarifying questions. Please try again.');
+  }
+
+  const questions = rawQuestions
+    .map((q, index) => {
+      const question = String(q.question || '').trim();
+      const options = (Array.isArray(q.options) ? q.options : [])
+        .map(option => String(option).trim())
+        .filter(Boolean)
+        .filter(option => option.toLowerCase() !== 'other');
+      if (!question || options.length === 0) return null;
+      return {
+        id: q.id || `question_${index + 1}`,
+        question,
+        options,
+      };
+    })
+    .filter(Boolean);
+  if (questions.length === 0) {
+    throw new Error('Could not generate clarifying questions. Please try again.');
+  }
+  return questions;
+}
+
 export function buildAnswersContext(answers) {
   if (!answers || Object.keys(answers).length === 0) return '';
   const groups = {
@@ -11,8 +50,9 @@ export function buildAnswersContext(answers) {
   };
 
   Object.values(answers).forEach(value => {
-    const text = `${value.question || ''} ${value.answer || ''}`.toLowerCase();
-    const line = `• ${value.question}: ${value.answer}`;
+    const answer = answerText(value);
+    const text = `${value.question || ''} ${answer}`.toLowerCase();
+    const line = `• ${value.question}: ${answer}`;
     if (/(duration|shift|day|week|hours|crew|operatives|scale|length|area|quantity|programme|phase)/.test(text)) {
       groups.scopeOfWorks.push(line);
     } else if (/(plant|equipment|machine|tool|excavator|dumper|saw|breaker|crane|vehicle|material)/.test(text)) {
@@ -43,7 +83,7 @@ async function fetchQuestions({ taskType, location, additionalInfo }) {
 
 ${context}
 
-Generate 4–6 multiple-choice clarifying questions. Focus on factors that genuinely change the risk profile or required controls — scale, environment, specific equipment, proximity hazards, public presence, services, weather exposure, etc. Avoid generic admin questions.
+Generate as many multi-select clarifying questions as are needed for this RAMS to be materially safer and more site-specific. Focus on factors that genuinely change the risk profile or required controls — scale, environment, specific equipment, proximity hazards, public presence, services, weather exposure, buried services, permits, access, lifting, welfare, emergency arrangements, environmental controls, and task sequencing. Avoid generic admin questions.
 
 Return ONLY valid JSON with no markdown:
 {
@@ -57,18 +97,20 @@ Return ONLY valid JSON with no markdown:
 }
 
 Rules:
-- 4–6 questions, ordered most-to-least impactful
-- 3–4 options each, mutually exclusive, covering the realistic range
+- Ask every question needed, ordered most-to-least safety impact. Do not stop at five questions if more are needed.
+- 3–6 options each. Options may be selected together, so do not make them mutually exclusive unless the facts truly are exclusive.
+- Do not include an "Other" option in JSON. The UI adds a free-text Other option automatically.
 - Use UK construction / HSQE terminology
 - Tailor specifically to the task and location provided — do not ask generic questions that apply to every job`;
 
   const data = await callOpenAIChat({
     model: 'gpt-4o',
-    max_tokens: 600,
+    temperature: 0.2,
+    max_tokens: 1800,
     messages: [{ role: 'user', content: prompt }],
   });
   const raw = data.choices?.[0]?.message?.content || '';
-  return parseJsonResponse(raw, 'Could not generate clarifying questions. Please try again.').questions;
+  return normaliseQuestions(parseJsonResponse(raw, 'Could not generate clarifying questions. Please try again.'));
 }
 
 export default function ClarifyingQuestions({ taskType, location, additionalInfo, onSubmit, onBack }) {
@@ -85,10 +127,40 @@ export default function ClarifyingQuestions({ taskType, location, additionalInfo
       .catch(err => { setLoadErr(err.message || 'Could not generate questions'); setLoadState('error'); });
   }, [taskType, location, additionalInfo]);
 
-  const allAnswered = questions.length > 0 && questions.every(q => answers[q.id]);
+  const hasAnswer = (answer) =>
+    (answer?.selections?.length || 0) > 0 || Boolean(answer?.other?.trim());
 
-  const select = (q, opt) =>
-    setAnswers(prev => ({ ...prev, [q.id]: { question: q.question, answer: opt } }));
+  const allAnswered = questions.length > 0 && questions.every(q => hasAnswer(answers[q.id]));
+
+  const normaliseAnswer = (q, next) => {
+    const selections = next.selections || [];
+    const other = next.other || '';
+    return {
+      question: q.question,
+      selections,
+      other,
+      answer: [
+        ...selections,
+        other.trim() ? `Other: ${other.trim()}` : '',
+      ].filter(Boolean).join('; '),
+    };
+  };
+
+  const toggleOption = (q, opt) =>
+    setAnswers(prev => {
+      const current = prev[q.id] || { question: q.question, selections: [], other: '' };
+      const selected = current.selections || [];
+      const selections = selected.includes(opt)
+        ? selected.filter(item => item !== opt)
+        : [...selected, opt];
+      return { ...prev, [q.id]: normaliseAnswer(q, { ...current, selections }) };
+    });
+
+  const setOther = (q, value) =>
+    setAnswers(prev => {
+      const current = prev[q.id] || { question: q.question, selections: [], other: '' };
+      return { ...prev, [q.id]: normaliseAnswer(q, { ...current, other: value }) };
+    });
 
   const handleSubmit = () => {
     if (allAnswered) onSubmit(answers);
@@ -115,7 +187,7 @@ export default function ClarifyingQuestions({ taskType, location, additionalInfo
       <div style={{ padding: '28px' }}>
         {loadState === 'loading' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            {[...Array(5)].map((_, i) => (
+            {[...Array(7)].map((_, i) => (
               <div key={i} style={{ opacity: 1 - i * 0.15 }}>
                 <div style={{ width: `${55 + i * 8}%`, height: 14, background: '#1e2128', borderRadius: 4, marginBottom: 12 }} />
                 <div style={{ display: 'flex', gap: 8 }}>
@@ -133,22 +205,30 @@ export default function ClarifyingQuestions({ taskType, location, additionalInfo
         {loadState === 'error' && (
           <div style={{ textAlign: 'center', padding: '24px 0' }}>
             <div style={{ fontSize: 13, color: '#ef4444', marginBottom: 16 }}>⚠ {loadErr}</div>
-            <button
-              onClick={() => {
-                setLoadState('loading');
-                fetchQuestions({ taskType, location, additionalInfo })
-                  .then(qs => { setQuestions(qs); setLoadState('ready'); })
-                  .catch(err => { setLoadErr(err.message); setLoadState('error'); });
-              }}
-              style={{ background: 'none', border: '1.5px solid #2a2d35', color: '#888', borderRadius: 8, fontFamily: "'DM Sans', sans-serif", fontSize: 13, padding: '8px 18px', cursor: 'pointer' }}
-            >
-              Retry
-            </button>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
+              <button
+                onClick={() => {
+                  setLoadState('loading');
+                  fetchQuestions({ taskType, location, additionalInfo })
+                    .then(qs => { setQuestions(qs); setLoadState('ready'); })
+                    .catch(err => { setLoadErr(err.message); setLoadState('error'); });
+                }}
+                style={{ background: 'none', border: '1.5px solid #2a2d35', color: '#888', borderRadius: 8, fontFamily: "'DM Sans', sans-serif", fontSize: 13, padding: '10px 18px', cursor: 'pointer', minHeight: 44 }}
+              >
+                Retry
+              </button>
+              <button
+                onClick={() => onSubmit({})}
+                style={{ background: '#00e5a0', border: 'none', color: '#0f1117', borderRadius: 8, fontFamily: "'DM Sans', sans-serif", fontSize: 13, fontWeight: 600, padding: '10px 18px', cursor: 'pointer', minHeight: 44 }}
+              >
+                Generate without questions
+              </button>
+            </div>
           </div>
         )}
 
         {loadState === 'ready' && questions.map((q, qi) => {
-          const answered = !!answers[q.id];
+          const answered = hasAnswer(answers[q.id]);
           return (
             <div key={q.id} style={{ marginBottom: qi < questions.length - 1 ? 28 : 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
@@ -167,11 +247,11 @@ export default function ClarifyingQuestions({ taskType, location, additionalInfo
               </div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, paddingLeft: 32 }}>
                 {q.options.map(opt => {
-                  const sel = answers[q.id]?.answer === opt;
+                  const sel = answers[q.id]?.selections?.includes(opt);
                   return (
                     <button
                       key={opt}
-                      onClick={() => select(q, opt)}
+                      onClick={() => toggleOption(q, opt)}
                       style={{
                         background: sel ? 'rgba(0,229,160,0.08)' : '#1e2128',
                         border: `1.5px solid ${sel ? '#00e5a0' : '#2a2d35'}`,
@@ -185,10 +265,33 @@ export default function ClarifyingQuestions({ taskType, location, additionalInfo
                         fontWeight: sel ? 500 : 400,
                       }}
                     >
-                      {opt}
+                      {sel ? '✓ ' : ''}{opt}
                     </button>
                   );
                 })}
+              </div>
+              <div style={{ paddingLeft: 32, marginTop: 10 }}>
+                <label style={{ display: 'block', color: answers[q.id]?.other ? '#00e5a0' : '#555', fontSize: 12, marginBottom: 6 }}>
+                  Other / site-specific detail
+                </label>
+                <input
+                  type="text"
+                  value={answers[q.id]?.other || ''}
+                  onChange={(e) => setOther(q, e.target.value)}
+                  placeholder="Add anything not covered by the options…"
+                  style={{
+                    width: '100%',
+                    minHeight: 44,
+                    background: '#0f1117',
+                    border: `1.5px solid ${answers[q.id]?.other ? '#00e5a0' : '#2a2d35'}`,
+                    borderRadius: 8,
+                    color: '#e8e8e4',
+                    fontFamily: "'DM Sans', sans-serif",
+                    fontSize: 13,
+                    padding: '10px 12px',
+                    outline: 'none',
+                  }}
+                />
               </div>
             </div>
           );
@@ -227,7 +330,7 @@ export default function ClarifyingQuestions({ taskType, location, additionalInfo
         </button>
         {loadState === 'ready' && !allAnswered && (
           <div style={{ fontSize: 12, color: '#555' }}>
-            {questions.length - Object.keys(answers).length} question{questions.length - Object.keys(answers).length !== 1 ? 's' : ''} remaining
+            {questions.filter(q => !hasAnswer(answers[q.id])).length} question{questions.filter(q => !hasAnswer(answers[q.id])).length !== 1 ? 's' : ''} remaining
           </div>
         )}
       </div>

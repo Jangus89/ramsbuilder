@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useCallback } from "react";
+import { analysePhoto } from "../lib/photoAnalysis";
 
 export const TASK_TYPES = [
   "Excavation / Groundworks",
@@ -25,12 +26,65 @@ function PhotoUpload({ photos, onAdd, onRemove }) {
   const inputRef = useRef();
 
   const [fileError, setFileError] = useState('');
+  const [analysing, setAnalysing] = useState(() => new Set());
+  const [analyses, setAnalyses] = useState({});
+  const [analysisErrors, setAnalysisErrors] = useState({});
+
+  const photoId = (file, offset) => {
+    if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
+    return `${Date.now()}-${file.name}-${offset}`;
+  };
+
+  const clearAnalysis = useCallback((id) => {
+    setAnalysing(prev => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+    setAnalyses(prev => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+    setAnalysisErrors(prev => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+  }, []);
+
+  const runAnalysis = useCallback((photo) => {
+    if (!photo?.id || !photo?.url) return;
+    setAnalysisErrors(prev => {
+      const next = { ...prev };
+      delete next[photo.id];
+      return next;
+    });
+    setAnalysing(prev => new Set(prev).add(photo.id));
+    analysePhoto(photo.url)
+      .then(results => {
+        setAnalyses(prev => ({ ...prev, [photo.id]: results }));
+      })
+      .catch(err => {
+        setAnalysisErrors(prev => ({
+          ...prev,
+          [photo.id]: err.message || 'Could not analyse this photo.',
+        }));
+      })
+      .finally(() => {
+        setAnalysing(prev => {
+          const next = new Set(prev);
+          next.delete(photo.id);
+          return next;
+        });
+      });
+  }, []);
 
   const handleFiles = useCallback((files) => {
     setFileError('');
     const remaining = 4 - photos.length;
     const toAdd = Array.from(files).slice(0, remaining);
-    toAdd.forEach(file => {
+    toAdd.forEach((file, offset) => {
       if (!file.type.startsWith('image/')) {
         setFileError('Only image files are allowed.');
         return;
@@ -40,10 +94,19 @@ function PhotoUpload({ photos, onAdd, onRemove }) {
         return;
       }
       const reader = new FileReader();
-      reader.onload = (e) => onAdd({ file, url: e.target.result, name: file.name });
+      reader.onload = (e) => {
+        const photo = { id: photoId(file, offset), file, url: e.target.result, name: file.name };
+        onAdd(photo);
+        runAnalysis(photo);
+      };
       reader.readAsDataURL(file);
     });
-  }, [photos.length, onAdd]);
+  }, [photos.length, onAdd, runAnalysis]);
+
+  const removePhoto = useCallback((photo, index) => {
+    if (photo?.id) clearAnalysis(photo.id);
+    onRemove(index);
+  }, [clearAnalysis, onRemove]);
 
   return (
     <div>
@@ -77,9 +140,26 @@ function PhotoUpload({ photos, onAdd, onRemove }) {
       {photos.length > 0 && (
         <div className="photos-grid" style={{ marginTop: photos.length < 4 ? '16px' : '0' }}>
           {photos.map((p, i) => (
-            <div key={i} className="photo-thumb">
-              <img src={p.url} alt={p.name} />
-              <button className="photo-remove" onClick={() => onRemove(i)}>×</button>
+            <div key={p.id || i} className="photo-card">
+              <div className="photo-thumb">
+                <img src={p.url} alt={p.name} />
+                <button className="photo-remove" onClick={() => removePhoto(p, i)}>×</button>
+              </div>
+              <div className="photo-analysis">
+                <div className="photo-analysis-title">Visible hazards</div>
+                {analysing.has(p.id) && <div className="analysis-loading">Analysing photo…</div>}
+                {!analysing.has(p.id) && analyses[p.id]?.length > 0 && (
+                  <ul>
+                    {analyses[p.id].map(item => <li key={item}>{item}</li>)}
+                  </ul>
+                )}
+                {!analysing.has(p.id) && analysisErrors[p.id] && (
+                  <div className="analysis-error">
+                    {analysisErrors[p.id]}
+                    <button type="button" onClick={() => runAnalysis(p)}>Retry</button>
+                  </div>
+                )}
+              </div>
             </div>
           ))}
         </div>

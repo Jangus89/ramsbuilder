@@ -28,10 +28,6 @@ const DEMO_USER = {
 };
 
 const DRAFT_PREFIX = 'safeflow_draft_';
-const draftValue = (key) => {
-  if (typeof window === 'undefined') return '';
-  return window.localStorage.getItem(`${DRAFT_PREFIX}${key}`) || '';
-};
 
 async function validateRamsDocument(ramsData) {
   const data = await callOpenAIChat({
@@ -55,10 +51,11 @@ async function validateRamsDocument(ramsData) {
 
 export default function SafeFlowRAMS() {
   const [photos, setPhotos] = useState([]);
-  const [taskType, setTaskType] = useState(() => draftValue('taskType'));
-  const [customTask, setCustomTask] = useState(() => draftValue('customTask'));
-  const [location, setLocation] = useState(() => draftValue('location'));
-  const [additionalInfo, setAdditionalInfo] = useState(() => draftValue('additionalInfo'));
+  const [taskType, setTaskType] = useState('');
+  const [customTask, setCustomTask] = useState('');
+  const [location, setLocation] = useState('');
+  const [additionalInfo, setAdditionalInfo] = useState('');
+  const [draftRestored, setDraftRestored] = useState(false);
   const [loading, setLoading] = useState(false);
   const [loadingStep, setLoadingStep] = useState(0);
   const [streamedText, setStreamedText] = useState('');
@@ -85,11 +82,20 @@ export default function SafeFlowRAMS() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
+    setTaskType(window.localStorage.getItem(`${DRAFT_PREFIX}taskType`) || '');
+    setCustomTask(window.localStorage.getItem(`${DRAFT_PREFIX}customTask`) || '');
+    setLocation(window.localStorage.getItem(`${DRAFT_PREFIX}location`) || '');
+    setAdditionalInfo(window.localStorage.getItem(`${DRAFT_PREFIX}additionalInfo`) || '');
+    setDraftRestored(true);
+  }, []);
+
+  useEffect(() => {
+    if (!draftRestored || typeof window === 'undefined') return;
     window.localStorage.setItem(`${DRAFT_PREFIX}taskType`, taskType);
     window.localStorage.setItem(`${DRAFT_PREFIX}customTask`, customTask);
     window.localStorage.setItem(`${DRAFT_PREFIX}location`, location);
     window.localStorage.setItem(`${DRAFT_PREFIX}additionalInfo`, additionalInfo);
-  }, [taskType, customTask, location, additionalInfo]);
+  }, [draftRestored, taskType, customTask, location, additionalInfo]);
 
   useEffect(() => {
     if (rateLimitCountdown <= 0) return;
@@ -416,7 +422,7 @@ export default function SafeFlowRAMS() {
   if (authLoading) {
     return (
       <>
-        <style>{styles}</style>
+        <style dangerouslySetInnerHTML={{ __html: styles }} />
         <div style={{ minHeight: '100vh', background: '#0f1117', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div className="loading-ring" style={{ width: 32, height: 32, borderWidth: 3 }} />
         </div>
@@ -430,7 +436,7 @@ export default function SafeFlowRAMS() {
 
   return (
     <>
-      <style>{styles}</style>
+      <style dangerouslySetInnerHTML={{ __html: styles }} />
       <div className="app">
         <div className="header">
           <div className="logo">
