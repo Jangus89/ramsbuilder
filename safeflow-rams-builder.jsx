@@ -1,14 +1,14 @@
 'use client';
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { DEFAULT_PROFILE } from './lib/companyProfile';
-import { callOpenAIChat, getRateLimitRemaining, parseJsonResponse } from './lib/openaiClient';
+import { callOpenAIChat, streamOpenAIChat, getRateLimitRemaining, parseJsonResponse } from './lib/openaiClient';
 import { isSupabaseConfigured, supabase } from './lib/supabase';
 import { populateRamsPdfTemplate } from './lib/ramsPdfTemplate';
 import { buildRamsMessages } from './lib/ramsPrompt';
+import { useKeyboardShortcuts } from './lib/useKeyboardShortcuts';
 import { styles } from './lib/safeflowStyles';
 import JobSetup from './components/JobSetup';
-import LoadingState from './components/LoadingState';
 import RamsDocument from './components/RamsDocument';
 import DocumentHistory from './components/DocumentHistory';
 import SettingsModal from './components/SettingsModal';
@@ -16,6 +16,7 @@ import CompliancePanel from './components/CompliancePanel';
 import ErrorBoundary from './components/ErrorBoundary';
 import AuthScreen from './components/AuthScreen';
 import ClarifyingQuestions from './components/ClarifyingQuestions';
+import CommandPalette from './components/CommandPalette';
 import { loadCachedDocuments, saveCachedDocument } from './lib/offlineCache';
 
 const DEMO_USER = {
@@ -63,6 +64,7 @@ export default function SafeFlowRAMS() {
   const [loadingStep, setLoadingStep] = useState(0);
   const [streamedText, setStreamedText] = useState('');
   const [ramsData, setRamsData] = useState(null);
+  const [streamingFields, setStreamingFields] = useState(null);
   const [error, setError] = useState('');
   const [validationIssues, setValidationIssues] = useState([]);
   const [showValidationIssues, setShowValidationIssues] = useState(true);
@@ -71,6 +73,7 @@ export default function SafeFlowRAMS() {
   const [rateLimitCountdown, setRateLimitCountdown] = useState(0);
   const [showSettings, setShowSettings]     = useState(false);
   const [showClarifying, setShowClarifying] = useState(false);
+  const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [user, setUser]                     = useState(null);
   const [authLoading, setAuthLoading]       = useState(true);
   const [profile, setProfile]               = useState(DEFAULT_PROFILE);
@@ -82,6 +85,22 @@ export default function SafeFlowRAMS() {
   const [orgRole, setOrgRole] = useState(null);
   const [orgMemberCount, setOrgMemberCount] = useState(0);
   const [online, setOnline] = useState(() => typeof navigator === 'undefined' ? true : navigator.onLine);
+  const [reuseBanner, setReuseBanner] = useState(false);
+  const [shortcutToast, setShortcutToast] = useState(false);
+  const streamBufferRef = useRef('');
+  const generateBtnRef = useRef(null);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (!localStorage.getItem('sf_shortcuts_seen')) {
+      setShortcutToast(true);
+      const t = setTimeout(() => {
+        setShortcutToast(false);
+        localStorage.setItem('sf_shortcuts_seen', '1');
+      }, 4000);
+      return () => clearTimeout(t);
+    }
+  }, []);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -208,13 +227,12 @@ export default function SafeFlowRAMS() {
     setLoading(true);
     setError('');
     setStreamedText('');
+    setStreamingFields({});
     setValidationIssues([]);
     setShowValidationIssues(true);
     setLoadingStep(0);
-
-    const stepInterval = setInterval(() => {
-      setLoadingStep(prev => Math.min(prev + 1, 3));
-    }, 1800);
+    setRamsData(null);
+    streamBufferRef.current = '';
 
     try {
       const sessionResult = isSupabaseConfigured ? await supabase.auth.getSession() : null;
@@ -224,7 +242,6 @@ export default function SafeFlowRAMS() {
             model: 'gpt-4o',
             max_tokens: 8000,
             temperature: 0.2,
-            stream: true,
             safeFlowContext: {
               accessToken,
               task,
@@ -241,7 +258,6 @@ export default function SafeFlowRAMS() {
             model: 'gpt-4o',
             max_tokens: 8000,
             temperature: 0.2,
-            stream: true,
             messages: buildPrompt(answers).map((message, index) => index === 1
               ? {
                   ...message,
@@ -254,35 +270,64 @@ export default function SafeFlowRAMS() {
             )
           };
 
-      const data = await callOpenAIChat(taskRequest, {
-        onChunk: (_, fullText) => setStreamedText(fullText),
+      await streamOpenAIChat(taskRequest, (deltaText) => {
+        streamBufferRef.current += deltaText;
+        const buf = streamBufferRef.current;
+        setStreamedText(buf);
+
+        try {
+          const parsed = parseJsonResponse(buf, '__fail__');
+          if (parsed && typeof parsed === 'object' && parsed.taskType) {
+            setRamsData({ ...parsed, status: 'draft' });
+            setStreamingFields(null);
+            setLoading(false);
+          }
+        } catch {
+          const sf = {};
+          const topKeys = ['taskType', 'location', 'scopeOfWorks', 'siteObservations', 'hazards', 'methodStatement', 'ppe', 'emergencyArrangements', 'competencies', 'trainingRequirements', 'welfareArrangements', 'environmentalControls', 'coshhAssessment', 'refuellingProcedure'];
+          for (const key of topKeys) {
+            const pattern = new RegExp(`"${key}"\\s*:\\s*`);
+            const match = buf.match(pattern);
+            if (match) {
+              sf[key] = true;
+            }
+          }
+          if (Object.keys(sf).length > 0) {
+            setStreamingFields(sf);
+          }
+        }
       });
+
       const remaining = getRateLimitRemaining();
       if (remaining !== null) {
         setRateLimitRemaining(remaining);
         setRateWarningDismissed(false);
       }
 
-      const text = data.choices?.[0]?.message?.content || '';
-      const parsed = { ...parseJsonResponse(text, 'Could not parse the generated RAMS. Please try again.'), status: 'draft' };
-      const issues = await validateRamsDocument(parsed);
-      setValidationIssues(issues);
+      const text = streamBufferRef.current;
+      if (!ramsData) {
+        const parsed = { ...parseJsonResponse(text, 'Could not parse the generated RAMS. Please try again.'), status: 'draft' };
+        setStreamingFields(null);
+        setRamsData(parsed);
+      }
 
-      clearInterval(stepInterval);
-      setLoadingStep(3);
-      await new Promise(r => setTimeout(r, 400));
-      setRamsData(parsed);
-      setCurrentDocumentId(null);
+      const currentParsed = parseJsonResponse(text, 'err');
+      const issues = await validateRamsDocument(currentParsed);
+      setValidationIssues(issues);
+      setLoading(false);
+
       if (user && isSupabaseConfigured) {
         const refNumber = `SF-${Date.now().toString().slice(-6)}`;
+        const inputs = { taskType, customTask, location, additionalInfo, answers, photoCount: photos.length };
         const { data: saved, error: saveError } = await supabase.from('rams_documents').insert({
           user_id: user.id,
           org_id: org?.id || null,
-          task_type: parsed.taskType,
-          location: parsed.location,
+          task_type: currentParsed.taskType,
+          location: currentParsed.location,
           ref_number: refNumber,
           status: 'draft',
-          data: parsed,
+          data: currentParsed,
+          inputs,
         }).select('*').single();
         if (saveError) {
           setError(`RAMS generated, but saving to history failed: ${saveError.message}`);
@@ -293,13 +338,13 @@ export default function SafeFlowRAMS() {
         }
       }
     } catch (err) {
-      clearInterval(stepInterval);
       if (err.status === 429) setRateLimitCountdown(60);
       setError(err.message || 'Something went wrong. Please try again.');
+      setLoading(false);
+      setStreamingFields(null);
     } finally {
       const remaining = getRateLimitRemaining();
       if (remaining !== null) setRateLimitRemaining(remaining);
-      setLoading(false);
     }
   };
 
@@ -352,6 +397,7 @@ export default function SafeFlowRAMS() {
     setShowValidationIssues(true);
     setShowClarifying(false);
     setLoading(false);
+    setStreamingFields(null);
     setError('');
   };
 
@@ -394,6 +440,21 @@ export default function SafeFlowRAMS() {
     setOrgMemberCount(memberCount || 1);
   };
 
+  const handleReuseInputs = (inputs) => {
+    if (!inputs) return;
+    if (inputs.taskType) setTaskType(inputs.taskType);
+    if (inputs.customTask) setCustomTask(inputs.customTask);
+    if (inputs.location) setLocation(inputs.location);
+    if (inputs.additionalInfo) setAdditionalInfo(inputs.additionalInfo);
+    setRamsData(null);
+    setCurrentDocumentId(null);
+    setStreamingFields(null);
+    setShowClarifying(false);
+    setReuseBanner(true);
+    setTimeout(() => setReuseBanner(false), 4000);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const resetBuilder = () => {
     setRamsData(null);
     setCurrentDocumentId(null);
@@ -403,6 +464,7 @@ export default function SafeFlowRAMS() {
     setLocation('');
     setAdditionalInfo('');
     setShowClarifying(false);
+    setStreamingFields(null);
     setValidationIssues([]);
     if (typeof window !== 'undefined') {
       ['taskType', 'customTask', 'location', 'additionalInfo'].forEach(key => {
@@ -412,6 +474,20 @@ export default function SafeFlowRAMS() {
   };
 
   const canGenerate = Boolean((taskType && taskType !== 'Other (describe below)') || customTask.trim());
+
+  const shortcuts = useMemo(() => [
+    { key: 'g', meta: true, handler: () => { if (canGenerate && !loading) { setShowClarifying(true); } } },
+    { key: 'p', meta: true, handler: () => { if (ramsData) handleExportPDF(); } },
+    { key: 'k', meta: true, handler: () => setShowCommandPalette(prev => !prev) },
+    { key: '/', meta: true, handler: () => setShowSettings(true) },
+    { key: 'escape', meta: false, handler: () => {
+      if (showCommandPalette) setShowCommandPalette(false);
+      else if (showSettings) setShowSettings(false);
+      else if (ramsData) { setRamsData(null); setCurrentDocumentId(null); }
+    }},
+  ], [canGenerate, loading, ramsData, showCommandPalette, showSettings]);
+
+  useKeyboardShortcuts(shortcuts);
 
   if (authLoading) {
     return (
@@ -428,9 +504,25 @@ export default function SafeFlowRAMS() {
     return <AuthScreen onDemo={() => setUser(DEMO_USER)} />;
   }
 
+  const streamAnimationStyles = `
+    @keyframes fadeSlideIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes shimmer {
+      0% { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+  `;
+
   return (
     <>
       <style>{styles}</style>
+      <style>{streamAnimationStyles}</style>
       <div className="app">
         <div className="header">
           <div className="logo">
@@ -494,11 +586,18 @@ export default function SafeFlowRAMS() {
           </div>
         )}
 
+        {reuseBanner && (
+          <div className="warning-banner" style={{ background: 'rgba(0,229,160,0.06)', borderColor: 'rgba(0,229,160,0.2)', color: '#00e5a0' }}>
+            Form pre-filled from previous job — review and generate when ready
+          </div>
+        )}
+
         {documents.length > 0 && !ramsData && !loading && (
           <DocumentHistory
             documents={documents}
             currentDocumentId={currentDocumentId}
             onOpen={openDocument}
+            onReuseInputs={handleReuseInputs}
           />
         )}
 
@@ -533,7 +632,34 @@ export default function SafeFlowRAMS() {
           </JobSetup>
         )}
 
-        {loading && <LoadingState step={loadingStep} streamedText={streamedText} />}
+        {loading && !ramsData && (
+          <div className="rams-output" style={{ opacity: 0.6, pointerEvents: 'none' }}>
+            <div className="rams-doc" id="rams-document">
+              <div className="rams-doc-header">
+                <div>
+                  <div className="rams-doc-title" style={{ color: '#555' }}>Generating RAMS…</div>
+                  <div className="rams-doc-meta">
+                    <span style={{ color: '#333' }}>Streaming sections as they complete</span>
+                  </div>
+                </div>
+              </div>
+              <div className="rams-body">
+                {['scopeOfWorks', 'siteObservations', 'hazards', 'methodStatement', 'ppe', 'emergencyArrangements'].map(key => (
+                  <div className="rams-section" key={key}>
+                    <div style={{
+                      height: 64, borderRadius: 8,
+                      background: streamingFields && key in streamingFields
+                        ? 'rgba(0,229,160,0.04)'
+                        : 'linear-gradient(90deg, #1e2128 25%, #2a2d35 50%, #1e2128 75%)',
+                      backgroundSize: '200% 100%',
+                      animation: streamingFields && key in streamingFields ? 'none' : 'shimmer 1.5s ease infinite',
+                    }} />
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
 
         {ramsData && !loading && (
           <>
@@ -558,6 +684,7 @@ export default function SafeFlowRAMS() {
                 onExportWord={activeTemplate ? handleExportWord : null}
                 onExportDrive={handleExportDrive}
                 onExportOneDrive={handleExportOneDrive}
+                streamingFields={streamingFields}
               />
             </ErrorBoundary>
             <ErrorBoundary>
@@ -586,6 +713,31 @@ export default function SafeFlowRAMS() {
           orgRole={orgRole}
           onOrgChange={handleOrgChange}
         />
+      )}
+      <CommandPalette
+        open={showCommandPalette}
+        onClose={() => setShowCommandPalette(false)}
+        canGenerate={canGenerate && !loading}
+        hasRamsData={Boolean(ramsData)}
+        onGenerate={() => { if (canGenerate && !loading) setShowClarifying(true); }}
+        onExportPDF={handleExportPDF}
+        onExportWord={activeTemplate ? handleExportWord : null}
+        onOpenSettings={() => setShowSettings(true)}
+        onReset={resetBuilder}
+        onRunCompliance={() => {}}
+        recentDocuments={documents}
+        onOpenDocument={openDocument}
+      />
+      {shortcutToast && (
+        <div style={{
+          position: 'fixed', bottom: 24, right: 24, zIndex: 500,
+          fontFamily: "'DM Mono', monospace", fontSize: 12, color: '#00e5a0',
+          background: '#13151c', border: '1px solid rgba(0,229,160,0.2)',
+          borderRadius: 8, padding: '10px 16px',
+          animation: 'fadeSlideIn 0.35s ease forwards',
+        }}>
+          Pro tip: ⌘K opens the command palette
+        </div>
       )}
     </>
   );

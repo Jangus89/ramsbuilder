@@ -149,6 +149,18 @@ function ProfileTab({ profile, setProfile, userId, onSaved }) {
         </div>
       </Sec>
 
+      <Sec title="Brand Settings">
+        <div style={S.grid2}>
+          <F label="Brand Colour" help="Used on PDF cover and section titles.">
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <input type="color" value={profile.brandColour || '#0b7a53'} onChange={e => up('brandColour', e.target.value)} style={{ width: 40, height: 36, padding: 2, background: '#13151c', border: '1.5px solid #1e2128', borderRadius: 6, cursor: 'pointer' }} />
+              <input style={S.input} value={profile.brandColour || '#0b7a53'} onChange={e => { const v = e.target.value; if (/^#[0-9a-fA-F]{0,6}$/.test(v)) up('brandColour', v); }} placeholder="#0b7a53" onFocus={focus} onBlur={blur} />
+              <div style={{ width: 24, height: 24, borderRadius: 4, background: profile.brandColour || '#0b7a53', flexShrink: 0, border: '1px solid #2a2d35' }} />
+            </div>
+          </F>
+        </div>
+      </Sec>
+
       <Sec title="Management System">
         <F label="Risk Matrix Definition" help="Leave blank to use default 5×5. Describe your company matrix if different.">
           <textarea {...ta('riskMatrixDefinition', 'e.g. We use a 3×3: L=1-3, M=4-6, H=7-9. Likelihood: 1=Rare 2=Possible 3=Likely. Severity: 1=Minor 2=Moderate 3=Severe.', 70)} />
